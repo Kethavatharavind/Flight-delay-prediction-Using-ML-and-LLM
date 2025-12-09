@@ -11,22 +11,17 @@ venv/
 .idea/
 
 # Local databases (don't push - too large)
-*.db
+data/*.db
+data/*.csv
 
-# Large CSV files
-*.csv
-Processed_data15.csv
+# JSON state files (local only in data folder)
+data/rl_q_table.json
+data/rl_metrics.json
+data/pending_predictions.json
+data/long_term_summary.json
 
-# JSON state files (local only)
-rl_q_table.json
-rl_metrics.json
-pending_predictions.json
-long_term_summary.json
-available_routes.json
-model_comparison_report.json
-
-# Keep model files (needed for predictions)
-# These are NOT ignored - they get pushed to GitHub
+# Config files that should be tracked (NOT ignored)
+# config/ is tracked
 
 # Jupyter
 .ipynb_checkpoints/
@@ -39,9 +34,11 @@ Thumbs.db
 # Logs
 *.log
 
-# Empty folders created by accident
-models/
-data/
-config/
-tests/
-scripts/
+# Keep these folders tracked (NOT ignored):
+# - src/       (core code)
+# - scripts/   (utility scripts)
+# - tests/     (test files)
+# - config/    (configuration)
+# - models/    (ML models - needed for predictions)
+# - templates/ (HTML)
+# - static/    (CSS/JS)

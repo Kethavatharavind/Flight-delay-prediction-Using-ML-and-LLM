@@ -6,17 +6,21 @@ Enhanced Flask Application with proper error handling and logging
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import json
 import os
+import sys
 from datetime import datetime, timedelta
 import numpy as np
-import data_fetcher
-import llm_analyzer
-import rl_agent
+
+# Add src folder to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+from src import data_fetcher
+from src import llm_analyzer
+from src import rl_agent
 import atexit
 import signal
 import logging
 from functools import wraps
 import time
-import sys
 
 
 logging.basicConfig(

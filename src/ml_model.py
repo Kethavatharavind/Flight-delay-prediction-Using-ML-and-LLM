@@ -30,10 +30,13 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
-DB_NAME = 'india_data.db'
-MODEL_FILE = 'delay_model.pkl'
-ENCODER_FILE = 'label_encoders.pkl'
+# Get the project root directory (parent of src/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Configuration - using new folder structure
+DB_NAME = os.path.join(PROJECT_ROOT, 'data', 'india_data.db')
+MODEL_FILE = os.path.join(PROJECT_ROOT, 'models', 'delay_model.pkl')
+ENCODER_FILE = os.path.join(PROJECT_ROOT, 'models', 'label_encoders.pkl')
 
 
 class FlightDelayMLModel:

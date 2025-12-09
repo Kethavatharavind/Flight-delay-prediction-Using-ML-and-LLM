@@ -3,9 +3,11 @@ CRITICAL FIXES:
 1. Added pandas import at top
 2. Changed days=4 to days=1 for correct "yesterday"
 3. Added fresh signals to RL learning
+4. Updated paths for new folder structure
 """
 
 import os
+import sys
 import requests
 import json
 import sqlite3
@@ -14,9 +16,16 @@ from dotenv import load_dotenv
 import time
 import pandas as pd  # ✅ FIX 1: Added here instead of inside function
 
-# --- CONFIGURATION ---
-DB_NAME = 'india_data.db'
-ROUTES_FILE = 'major_routes.json'
+# Get the project root directory (parent of scripts/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Add src folder to Python path for imports
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))
+
+# --- CONFIGURATION --- (using new folder structure)
+DB_NAME = os.path.join(PROJECT_ROOT, 'data', 'india_data.db')
+ROUTES_FILE = os.path.join(PROJECT_ROOT, 'config', 'major_routes.json')
+ARCHIVE_DIR = os.path.join(PROJECT_ROOT, 'data')
 ROUTES_TO_TRACK = 20
 API_SLEEP = 15.0
 # ---------------------
@@ -96,7 +105,7 @@ def archive_old_data(conn, days_to_keep=180):
     
     print(f"\n📦 Archiving {old_count} records older than {cutoff_date}...")
     
-    archive_filename = f"archived_flights_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    archive_filename = os.path.join(ARCHIVE_DIR, f"archived_flights_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
     
     try:
         df = pd.read_sql_query(

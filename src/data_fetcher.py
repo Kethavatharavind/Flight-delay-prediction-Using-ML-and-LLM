@@ -19,6 +19,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Get the project root directory (parent of src/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
@@ -32,8 +34,9 @@ AERODATABOX_HEADERS = {
 
 
 LONG_TERM_STATS = {}
+long_term_path = os.path.join(PROJECT_ROOT, 'data', 'long_term_summary.json')
 try:
-    with open('long_term_summary.json', 'r') as f:
+    with open(long_term_path, 'r') as f:
         LONG_TERM_STATS = json.load(f)
     logger.info(f"✅ Loaded {len(LONG_TERM_STATS)} historical records")
 except FileNotFoundError:
@@ -41,7 +44,8 @@ except FileNotFoundError:
 except Exception as e:
     logger.error(f"❌ Error loading historical data: {e}")
 
-DB_NAME = 'india_data.db'
+# Database path - using new folder structure
+DB_NAME = os.path.join(PROJECT_ROOT, 'data', 'india_data.db')
 RECENT_DAYS_TO_QUERY = 180
 
 

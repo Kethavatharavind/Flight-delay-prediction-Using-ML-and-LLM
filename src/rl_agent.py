@@ -9,6 +9,9 @@ import os
 from datetime import datetime
 import logging
 
+# Get the project root directory (parent of src/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Try to import Supabase cloud storage
 try:
     from supabase_client import is_cloud_enabled, save_q_table as cloud_save_q, load_q_table as cloud_load_q
@@ -42,15 +45,17 @@ class FlightPredictionRLAgent:
     
     def __init__(self, learning_rate=0.1, discount_factor=0.95, 
                  epsilon_start=0.3, epsilon_min=0.05,
-                 q_table_file='rl_q_table.json', metrics_file='rl_metrics.json'):
+                 q_table_file=None, metrics_file=None):
         
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.epsilon_start = epsilon_start
         self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
-        self.q_table_file = q_table_file
-        self.metrics_file = metrics_file
+        
+        # Use new folder structure for data files
+        self.q_table_file = q_table_file or os.path.join(PROJECT_ROOT, 'data', 'rl_q_table.json')
+        self.metrics_file = metrics_file or os.path.join(PROJECT_ROOT, 'data', 'rl_metrics.json')
         
         
         self.actions = [-15, -10, -5, 0, 5, 10, 15]

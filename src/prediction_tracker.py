@@ -13,7 +13,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PREDICTIONS_FILE = 'pending_predictions.json'
+# Get the project root directory (parent of src/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PREDICTIONS_FILE = os.path.join(PROJECT_ROOT, 'data', 'pending_predictions.json')
 
 # Try to import Supabase
 try:

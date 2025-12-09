@@ -10,7 +10,15 @@ import os
 import json
 from dotenv import load_dotenv
 import google.generativeai as genai
-import rl_agent
+# Using DQN (Deep Q-Network) instead of Q-Learning for better generalization
+try:
+    from rl_agent_dqn import get_dqn_agent
+    DQN_AVAILABLE = True
+    dqn_agent = get_dqn_agent()
+except ImportError:
+    import rl_agent
+    DQN_AVAILABLE = False
+    dqn_agent = None
 import logging
 
 # Import ML model
@@ -759,11 +767,18 @@ def predict_flight_outcome(signals, origin, dest, date, dep_time, arr_time, flig
     logger.info(f"📊 Combined (ML+Weather): {base_delay_prob}%")
     
     # ========================================
-    # STEP 3: RL Agent Adjustment
+    # STEP 3: RL Agent Adjustment (Using DQN if available)
     # ========================================
-    adjusted_delay_prob, rl_info = rl_agent.apply_rl_adjustment(
-        base_delay_prob, signals, date, dep_time
-    )
+    if DQN_AVAILABLE and dqn_agent:
+        adjusted_delay_prob, rl_info = dqn_agent.adjust_prediction(
+            base_delay_prob, signals, date, dep_time
+        )
+        logger.info(f"🧠 Using DQN Agent (Neural Network)")
+    else:
+        adjusted_delay_prob, rl_info = rl_agent.apply_rl_adjustment(
+            base_delay_prob, signals, date, dep_time
+        )
+        logger.info(f"📊 Using Q-Learning Agent (Fallback)")
     rl_adjustment = adjusted_delay_prob - base_delay_prob
     logger.info(f"🤖 STEP 3 - RL Adjustment: {base_delay_prob}% → {adjusted_delay_prob}% (Δ{rl_adjustment:+.0f}%)")
     

@@ -1,0 +1,82 @@
+[
+    {
+        "ORIGIN": "DEL",
+        "DEST": "BOM"
+    },
+    {
+        "ORIGIN": "BOM",
+        "DEST": "DEL"
+    },
+    {
+        "ORIGIN": "DEL",
+        "DEST": "BLR"
+    },
+    {
+        "ORIGIN": "BLR",
+        "DEST": "DEL"
+    },
+    {
+        "ORIGIN": "DEL",
+        "DEST": "HYD"
+    },
+    {
+        "ORIGIN": "HYD",
+        "DEST": "DEL"
+    },
+    {
+        "ORIGIN": "DEL",
+        "DEST": "MAA"
+    },
+    {
+        "ORIGIN": "MAA",
+        "DEST": "DEL"
+    },
+    {
+        "ORIGIN": "DEL",
+        "DEST": "CCU"
+    },
+    {
+        "ORIGIN": "CCU",
+        "DEST": "DEL"
+    },
+    {
+        "ORIGIN": "BOM",
+        "DEST": "BLR"
+    },
+    {
+        "ORIGIN": "BLR",
+        "DEST": "BOM"
+    },
+    {
+        "ORIGIN": "BOM",
+        "DEST": "HYD"
+    },
+    {
+        "ORIGIN": "HYD",
+        "DEST": "BOM"
+    },
+    {
+        "ORIGIN": "BOM",
+        "DEST": "MAA"
+    },
+    {
+        "ORIGIN": "MAA",
+        "DEST": "BOM"
+    },
+    {
+        "ORIGIN": "BLR",
+        "DEST": "HYD"
+    },
+    {
+        "ORIGIN": "HYD",
+        "DEST": "BLR"
+    },
+    {
+        "ORIGIN": "DEL",
+        "DEST": "GOI"
+    },
+    {
+        "ORIGIN": "BOM",
+        "DEST": "GOI"
+    }
+]

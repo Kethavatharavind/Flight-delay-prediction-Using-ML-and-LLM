@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flight Prediction Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <div class="bg-gradient"></div>
+  <div class="bg-pattern"></div>
+
+  <header class="header">
+    <div class="header-content">
+      <div class="logo-section">
+        <div class="logo-icon">✈️</div>
+        <div>
+          <h1 class="title">Flight Prediction</h1>
+          <p class="subtitle">LLM Based Real-Time Predictions</p>
+        </div>
+      </div>
+
+      <a href="/" class="stats-link">
+        <span class="stats-icon">←</span> New Search
+      </a>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- Loading -->
+    <div id="loading" class="glass-card">
+      <div class="loader" style="margin:auto"></div>
+      <p style="text-align:center;color:var(--text-secondary)">Analyzing flight data with AI...</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="glass-card hidden">
+      <p style="text-align:center;color:var(--danger);font-size:1.3rem">⚠️</p>
+      <p id="error-message" style="text-align:center"></p>
+      <a href="/" class="stats-link" style="display:block;text-align:center;margin-top:1rem">← Return to Search</a>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="hidden">
+
+      <!-- Flight Details -->
+      <div class="glass-card">
+        <div class="card-header">
+          <h2 class="card-title">Flight Details</h2>
+          <p class="card-subtitle"></p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:0.75rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+
+            <div>
+              <div id="flight-number" style="font-size:2rem;font-weight:700;color:var(--primary-light)">--</div>
+              <div id="flight-route" style="color:var(--text-muted)">-- → --</div>
+              <div id="flight-date" style="color:var(--text-secondary)">--</div>
+            </div>
+
+          </div>
+
+          <div class="flight-path">
+            <div>🛫</div>
+            <div class="path-line"><div class="plane">✈️</div></div>
+            <div>🛬</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="glass-card">
+        <div class="card-header">
+          <h3 class="card-title">Delay and cancellation Probability </h3>
+          <p class="card-subtitle"></p>
+        </div>
+
+        <div class="metrics-grid">
+
+          <!-- Delay Donut -->
+          <div class="metric-card donut-card">
+            <div class="donut-ring delay">
+                <svg viewBox="0 0 36 36">
+                    <path class="bg" d="M18 2 
+                        a 16 16 0 0 1 0 32 
+                        a 16 16 0 0 1 0 -32" />
+                    <path id="delay-arc" class="arc" d="M18 2 
+                        a 16 16 0 0 1 0 32 
+                        a 16 16 0 0 1 0 -32" />
+                </svg>
+                <div class="donut-value" id="delay-value">--%</div>
+            </div>
+
+            <div class="donut-text">
+                <div class="donut-title" id="delay-title">--% of Delay Probability</div>
+                <div class="donut-sub"></div>
+            </div>
+          </div>
+
+          <!-- Cancel Donut -->
+          <div class="metric-card donut-card">
+            <div class="donut-ring cancel">
+                <svg viewBox="0 0 36 36">
+                    <path class="bg" d="M18 2 
+                        a 16 16 0 0 1 0 32 
+                        a 16 16 0 0 1 0 -32" />
+                    <path id="cancel-arc" class="arc" d="M18 2 
+                        a 16 16 0 0 1 0 32 
+                        a 16 16 0 0 1 0 -32" />
+                </svg>
+                <div class="donut-value" id="cancel-value">--%</div>
+            </div>
+
+            <div class="donut-text">
+                <div class="donut-title" id="cancel-title">--% of Cancellation Probability</div>
+                <div class="donut-sub"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Explanation -->
+      <div class="glass-card">
+        <div class="card-header">
+          <h3 class="card-title">AI Analysis</h3>
+          <p class="card-subtitle"></p>
+        </div>
+
+        <div id="justification" class="timeline"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Dashboard Script -->
+  <script>
+    const fd = JSON.parse(sessionStorage.getItem('flightPredictionData') || '{}');
+
+    if (!fd.flight_number) {
+      showError("No flight data found.");
+    } else {
+      fetchPrediction();
+    }
+
+    async function fetchPrediction() {
+      try {
+        const res = await fetch("/predict_status", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(fd)
+        });
+
+        const data = await res.json();
+        displayPrediction(data);
+
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    function displayPrediction(data) {
+      const pred = data.prediction;
+
+      document.getElementById("flight-number").textContent = fd.flight_number;
+      document.getElementById("flight-route").textContent =
+        `${fd.origin_iata} to ${fd.dest_iata}`;
+      document.getElementById("flight-date").textContent =
+        new Date(fd.date).toDateString();
+
+      const delayProb = pred.probability_delay ?? 0;
+      const cancelProb = pred.probability_cancel ?? 0;
+
+      // Values
+      document.getElementById("delay-value").textContent = delayProb + "%";
+      document.getElementById("cancel-value").textContent = cancelProb + "%";
+
+      // Donut animation
+      document.getElementById("delay-arc").style.strokeDashoffset = 100 - delayProb;
+      document.getElementById("cancel-arc").style.strokeDashoffset = 100 - cancelProb;
+
+      // Donut titles
+      document.getElementById("delay-title").textContent =
+        `${delayProb}% of Delay Probability`;
+
+      document.getElementById("cancel-title").textContent =
+        `${cancelProb}% of Cancellation Probability`;
+
+      // Explanation text
+      document.getElementById("justification").innerHTML =
+        pred.user_friendly_summary || pred.justification || "No analysis available.";
+
+      // Show dashboard
+      document.getElementById("loading").classList.add("hidden");
+      document.getElementById("dashboard").classList.remove("hidden");
+    }
+
+    function showError(msg) {
+      document.getElementById("loading").classList.add("hidden");
+      document.getElementById("error").classList.remove("hidden");
+      document.getElementById("error-message").textContent = msg;
+    }
+  </script>
+
+</body>
+</html>

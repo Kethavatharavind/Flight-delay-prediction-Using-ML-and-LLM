@@ -1,0 +1,249 @@
+/* Modern Flight Prediction System - Glassmorphism Design
+   Upgraded premium UI (keeps element/class names compatible) */
+
+:root {
+    --primary: #3b82f6;
+    --primary-dark: #2563eb;
+    --primary-light: #60a5fa;
+    --secondary: #8b5cf6;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --bg-dark: #0f172a;
+    --bg-darker: #020617;
+    --glass-bg: rgba(255, 255, 255, 0.04);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+/* Reset */
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg-darker);
+    color: var(--text-primary);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    overflow-x:hidden;
+}
+
+/* Background */
+.bg-gradient {
+    position: fixed; inset:0; z-index:-3;
+    background: linear-gradient(135deg, #5b6de6 0%, #7e4bcc 50%, #f093fb 100%);
+    opacity:0.12; animation: gradientShift 18s ease infinite;
+}
+@keyframes gradientShift { 0%,100%{transform:scale(1) rotate(0)} 50%{transform:scale(1.06) rotate(6deg)} }
+
+.bg-pattern {
+    position:fixed; inset:0; z-index:-2;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(59,130,246,0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(139,92,246,0.06) 0%, transparent 50%);
+    pointer-events:none;
+}
+
+/* Header */
+.header {
+    background: var(--glass-bg);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--glass-border);
+    padding: 1.25rem 0;
+    position: sticky; top:0; z-index:100;
+}
+.header-content { max-width:1200px; margin:0 auto; padding:0 1.5rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.logo-section{ display:flex; gap:1rem; align-items:center; }
+.logo-icon{ font-size:2.4rem; animation: float 3s ease-in-out infinite; }
+@keyframes float{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+.title{ font-size:1.6rem; font-weight:700; background:linear-gradient(135deg,var(--primary-light),var(--secondary)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.subtitle{ font-size:0.9rem; color:var(--text-secondary); }
+
+/* Container */
+.container{ max-width:1200px; margin:0 auto; padding:2.5rem 2rem }
+
+/* Glass card */
+.glass-card{ background:var(--glass-bg); backdrop-filter: blur(18px); border:1px solid var(--glass-border); border-radius:1rem; padding:1.5rem; box-shadow:var(--shadow); margin-bottom:1.5rem; position:relative; overflow:hidden; animation: cardEnter 0.55s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes cardEnter{ from{opacity:0; transform:translateY(18px)} to{opacity:1; transform:translateY(0)} }
+
+/* Card header */
+.card-header{ margin-bottom:1rem }
+.card-title{ font-size:1.25rem; font-weight:600 }
+.card-subtitle{ color:var(--text-secondary); font-size:0.9rem }
+
+/* Form */
+.search-form{ display:flex; flex-direction:column; gap:1rem }
+.form-row{ display:grid; grid-template-columns:1fr 1fr; gap:1rem }
+@media(max-width:768px){ .form-row{ grid-template-columns:1fr } }
+.form-group{ display:flex; flex-direction:column; gap:0.5rem }
+.form-label{ display:flex; align-items:center; gap:0.5rem; font-size:0.9rem; font-weight:500; color:var(--text-secondary) }
+.label-icon{ font-size:1rem }
+.label-hint{ margin-left:auto; font-size:0.75rem; color:var(--text-muted) }
+.input-wrapper{ position:relative }
+.form-select, .form-input{ width:100%; padding:0.75rem 1rem; background:rgba(15,23,42,0.5); border:1px solid var(--glass-border); border-radius:0.6rem; color:var(--text-primary); font-size:1rem; transition:all .2s; appearance:none }
+.form-select:disabled{ opacity:0.5; cursor:not-allowed }
+.form-select:focus, .form-input:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 4px rgba(59,130,246,0.06) }
+.select-arrow{ position:absolute; right:1rem; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--text-muted); font-size:0.75rem }
+
+/* Buttons */
+.btn{ display:inline-flex; align-items:center; gap:0.5rem; padding:0.85rem 1.5rem; border-radius:0.6rem; border:none; font-weight:700; cursor:pointer; transition:all .18s; }
+.btn-primary{ background:linear-gradient(135deg,var(--primary),var(--secondary)); color:white; box-shadow:0 6px 24px rgba(59,130,246,0.2) }
+.btn-primary:hover:not(:disabled){ transform:translateY(-3px); box-shadow:0 12px 40px rgba(59,130,246,0.22) }
+.btn:disabled{ opacity:0.5; cursor:not-allowed }
+.btn-loader{ width:1rem; height:1rem; border:2px solid rgba(255,255,255,0.3); border-top-color:white; border-radius:50%; animation:spin 0.9s linear infinite }
+
+/* Flight list */
+.flight-list{ display:flex; flex-direction:column; gap:1rem }
+.flight-item{ background:rgba(15,23,42,0.5); border:1px solid var(--glass-border); border-radius:0.8rem; padding:1.25rem; transition:all .18s; cursor:pointer }
+.flight-item:hover{ transform:translateX(6px); background:rgba(15,23,42,0.65); border-color:var(--primary) }
+.flight-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem }
+.flight-number{ font-size:1.2rem; font-weight:700; color:var(--primary-light) }
+.airline-name{ color:var(--text-muted); font-size:0.875rem }
+.flight-times{ display:grid; grid-template-columns:1fr auto 1fr; gap:0.5rem; align-items:center }
+.time-info{ display:flex; flex-direction:column }
+.time-label{ font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em }
+.time-value{ font-size:1.05rem; font-weight:700; color:var(--text-primary) }
+.flight-arrow{ color:var(--primary); font-size:1.25rem }
+
+/* Info grid */
+.info-card{ background:var(--glass-bg); border-radius:0.9rem; padding:1.25rem }
+.info-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-top:0.75rem }
+.info-item{ display:flex; gap:0.75rem; padding:0.8rem; background:rgba(15,23,42,0.28); border:1px solid var(--glass-border); border-radius:0.6rem; transition:all .15s }
+.info-item:hover{ transform:translateY(-3px) }
+
+/* Toast */
+.toast{ position:fixed; right:2rem; bottom:2rem; background:var(--glass-bg); backdrop-filter:blur(18px); border:1px solid var(--glass-border); border-radius:0.75rem; padding:1rem 1.25rem; display:flex; gap:0.75rem; box-shadow:var(--shadow-lg); z-index:900 }
+.toast.hidden{ display:none }
+
+/* Metrics grid */
+.metrics-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:1rem }
+@media(max-width:768px){ .metrics-grid{ grid-template-columns:1fr } }
+
+.metric-card{ display:flex; flex-direction:column; gap:0.5rem; padding:1.25rem; border-radius:0.75rem; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid var(--glass-border) }
+.metric-label{ font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.06em }
+.metric-value{ font-size:2.2rem; font-weight:700; color:var(--text-primary) }
+.metric-badge{ display:inline-block; padding:0.25rem 0.6rem; border-radius:999px; font-size:0.75rem; font-weight:700; background:rgba(255,255,255,0.03); color:var(--text-secondary) }
+
+/* Circular rings */
+.ring{ --size:110px; --thickness:12px; width:var(--size); height:var(--size); border-radius:50%; display:inline-grid; place-items:center; position:relative }
+.ring .ring-bg{ position:absolute; inset:0; border-radius:50%; background:rgba(255,255,255,0.02) }
+.ring .ring-fill{ position:absolute; inset:0; border-radius:50%; transform:rotate(-90deg); transition:background .6s ease; filter:drop-shadow(0 6px 18px rgba(0,0,0,0.45)) }
+.ring .ring-mask{ position:absolute; inset:calc(var(--thickness)); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--text-primary); font-weight:700 }
+.ring-label{ font-size:0.9rem; color:var(--text-secondary); margin-top:0.5rem; text-align:center }
+.ring.delay .ring-fill{ background-image: conic-gradient(var(--primary) 0deg, transparent 0deg) }
+.ring.cancel .ring-fill{ background-image: conic-gradient(var(--secondary) 0deg, transparent 0deg) }
+
+/* Flight path */
+.flight-path{ position:relative; height:48px; display:flex; align-items:center; gap:0.75rem; margin-top:0.6rem }
+.path-line{ flex:1; height:4px; border-radius:999px; background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)); position:relative; overflow:hidden }
+.path-line::after{ content:''; position:absolute; inset:0; background:linear-gradient(90deg, rgba(59,130,246,0.18), rgba(139,92,246,0.10)); opacity:0.6 }
+.plane{ position:absolute; top:50%; left:-8%; transform:translateY(-50%); font-size:1.05rem; animation: fly 5s linear infinite }
+@keyframes fly { 0%{ left:-8% } 20%{ left:25% } 50%{ left:55% } 80%{ left:90% } 100%{ left:105% } }
+
+/* Timeline */
+.timeline{ display:flex; flex-direction:column; gap:0.75rem; margin-top:1rem }
+.timeline-item{ display:flex; gap:0.75rem; align-items:flex-start; padding:0.75rem; border-radius:0.6rem; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.02); transition:transform .18s ease }
+.timeline-item:hover{ transform:translateX(6px) }
+.timeline-icon{ width:36px; height:36px; border-radius:10px; display:grid; place-items:center; font-size:1.05rem; background:rgba(255,255,255,0.03) }
+.timeline-content{ flex:1 }
+.timeline-title{ font-weight:600; color:var(--text-primary); font-size:0.95rem }
+.timeline-desc{ color:var(--text-secondary); font-size:0.9rem; margin-top:4px }
+
+/* Chips */
+.chip{ display:inline-block; padding:0.18rem 0.6rem; border-radius:999px; font-weight:700; font-size:0.75rem; margin-left:0.5rem; color:#031025 }
+.chip.low{ background:rgba(16,185,129,0.95) }
+.chip.mod{ background:rgba(245,158,11,0.95) }
+.chip.high{ background:rgba(239,68,68,0.95); color:white }
+
+/* Error */
+.error-message { background: rgba(239,68,68,0.08); border:1px solid var(--danger); border-radius:0.5rem; padding:0.9rem; color:var(--danger) }
+
+/* Utility */
+.hidden{ display:none !important }
+.loading{ opacity:0.6; pointer-events:none }
+
+/* Responsive */
+@media(max-width:640px){
+    .container{ padding:1rem }
+    .title{ font-size:1.15rem }
+    .ring{ --size:92px }
+}
+
+/* Premium donut UI */
+.donut-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1rem;
+    border-radius: 1rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.donut-ring {
+    width: 70px;
+    height: 70px;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.donut-ring svg {
+    width: 70px;
+    height: 70px;
+    transform: rotate(-90deg);
+}
+
+.donut-ring .bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.08);
+    stroke-width: 4;
+}
+
+.donut-ring .arc {
+    fill: none;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    transition: stroke-dashoffset 0.9s ease, stroke 0.4s ease;
+}
+
+.donut-ring.delay .arc {
+    stroke: var(--primary-light);
+}
+
+.donut-ring.cancel .arc {
+    stroke: var(--secondary);
+}
+
+.donut-value {
+    position: absolute;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.donut-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.donut-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.donut-sub {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}

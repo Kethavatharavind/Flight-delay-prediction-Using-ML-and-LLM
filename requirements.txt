@@ -1,0 +1,12 @@
+flask
+requests
+google-generativeai
+beautifulsoup4
+python-dotenv
+pandas
+numpy
+urllib3
+scikit-learn
+xgboost
+supabase
+gunicorn

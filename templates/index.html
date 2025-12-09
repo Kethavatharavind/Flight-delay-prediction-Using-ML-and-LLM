@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flight Delay Predictor — Home</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <div class="bg-gradient"></div>
+  <div class="bg-pattern"></div>
+
+  <header class="header">
+    <div class="header-content">
+      <div class="logo-section">
+        <div class="logo-icon">✈️</div>
+        <div>
+          <h1 class="title">Flight Delay Predictor</h1>
+          <p class="subtitle">LLM Based Real-Time Predictions</p>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <main class="container">
+
+    <section id="search-card" class="glass-card">
+      <div class="card-header">
+        <h2 class="card-title"> Find Your Flight</h2>
+        <p class="card-subtitle">Select route and date to see available flights</p>
+      </div>
+
+      <form id="flight-search-form" class="search-form" onsubmit="return false;">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="origin-iata" class="form-label">
+              <span class="label-icon"></span> Origin Airport
+            </label>
+            <div class="input-wrapper">
+              <select id="origin-iata" class="form-select" disabled>
+                <option value="">Loading routes...</option>
+              </select>
+              <div class="select-arrow">▼</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="dest-iata" class="form-label">
+              <span class="label-icon"></span> Destination Airport
+            </label>
+            <div class="input-wrapper">
+              <select id="dest-iata" class="form-select" disabled>
+                <option value="">Select origin first</option>
+              </select>
+              <div class="select-arrow">▼</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="flight-date" class="form-label">
+            <span class="label-icon"></span> Flight Date
+            <span class="label-hint" id="date-hint">Must be 8+ days ahead</span>
+          </label>
+          <input type="date" id="flight-date" class="form-input" required>
+        </div>
+
+        <div style="display:flex;gap:0.75rem;align-items:center;margin-top:0.5rem">
+          <button type="button" id="find-flights-btn" class="btn btn-primary" disabled>
+            <span class="btn-icon"></span>
+            <span class="btn-text">Search Flights</span>
+            <div class="btn-loader hidden"></div>
+          </button>
+
+        </div>
+      </form>
+
+      <div id="error-message" class="error-message hidden" style="margin-top:0.75rem"></div>
+    </section>
+
+    <section id="flight-list-card" class="glass-card hidden">
+      <div class="card-header">
+        <h2 class="card-title">Available Flights</h2>
+        <p class="card-subtitle">
+          <span id="selected-route"></span>
+          <span class="route-separator">•</span>
+          <span id="selected-date"></span>
+        </p>
+      </div>
+
+      <div id="no-flights-message" class="no-flights hidden">
+        <div class="no-flights-icon"></div>
+        <p>No flights found for this route</p>
+      </div>
+
+      <div id="flight-list" class="flight-list"></div>
+    </section>
+
+    <section class="glass-card info-card">
+      <div class="info-header">
+        <span class="info-icon"></span>
+        <h3 class="info-title">How It Works</h3>
+      </div>
+      <p class="info-description">Our AI analyzes multiple data sources:</p>
+
+      <div class="info-grid">
+        <div class="info-item"><div class="info-item-icon">📊</div><div class="info-item-content"><h4>Historical Data</h4><p>Past Data performance </p></div></div>
+        <div class="info-item"><div class="info-item-icon">📈</div><div class="info-item-content"><h4>Recent Data</h4><p>Latest 1-month Data patterns</p></div></div>
+        <div class="info-item"><div class="info-item-icon">🌤️</div><div class="info-item-content"><h4>Weather</h4><p>Weather conditions</p></div></div>
+        <div class="info-item"><div class="info-item-icon">🏢</div><div class="info-item-content"><h4>Airport Status</h4><p>Current Status</p></div></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <p class="footer-text">
+        --Present it for limited routes only-- 
+      </p>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast hidden">
+    <div class="toast-icon"></div>
+    <div class="toast-message"></div>
+  </div>
+
+  <script src="/static/script.js"></script>
+
+</body>
+</html>

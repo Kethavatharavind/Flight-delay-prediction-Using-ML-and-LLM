@@ -6,8 +6,7 @@ python-dotenv
 pandas
 numpy
 urllib3
-scikit-learn
-xgboost
+scikit-learn==1.7.2
+xgboost==2.1.3
 supabase
-torch
 gunicorn

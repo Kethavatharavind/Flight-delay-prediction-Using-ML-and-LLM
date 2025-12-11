@@ -1,7 +1,7 @@
 """
 Model Comparison & Benchmarking Tool
-✅ Compare XGBoost vs BiLSTM
-✅ Compare Q-Learning vs DQN
+✅ Compare XGBoost performance
+✅ Benchmark Q-Learning agent
 ✅ Generate performance reports
 """
 
@@ -21,20 +21,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src
 import ml_model
 import rl_agent
 
-# Import new models
+# Import advanced models (optional)
 try:
     from ml_model_advanced import get_bilstm_model
     BILSTM_AVAILABLE = True
 except:
     BILSTM_AVAILABLE = False
-    print("⚠️ BiLSTM not available")
-
-try:
-    from rl_agent_dqn import get_dqn_agent
-    DQN_AVAILABLE = True
-except:
-    DQN_AVAILABLE = False
-    print("⚠️ DQN not available")
+    print("⚠️ BiLSTM not available (optional)")
 
 
 class ModelComparator:

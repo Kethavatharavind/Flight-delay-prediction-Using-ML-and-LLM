@@ -14,7 +14,7 @@ Flight Delay Prediction AI combines cutting-edge machine learning with real-time
 
 ### Key Highlights
 - 🧠 **Ensemble ML Model** - XGBoost + Random Forest (70.36% accuracy)
-- 🤖 **Adaptive RL Agent** - Deep Q-Network that learns from outcomes
+- 🤖 **Adaptive RL Agent** - Q-Learning agent that learns from outcomes
 - 🌤️ **Real-Time Weather** - Live forecasts for origin and destination
 - ✈️ **Live Flight Data** - Integration with AviationStack API
 - 💬 **AI Explanations** - Natural language summaries via Google Gemini
@@ -54,42 +54,40 @@ Final Prediction = (0.75 × ML Model) + (0.25 × Weather Risk) ± RL Adjustment
 ```
 FLIGHT_AI/
 │
-├── � src/                          # Core Application Logic
+├── 📂 src/                          # Core Application Logic
 │   ├── ml_model.py                 # XGBoost + Random Forest ensemble
-│   ├── rl_agent.py                 # Q-Learning agent (34 states)
-│   ├── rl_agent_dqn.py             # Deep Q-Network (PyTorch)
+│   ├── rl_agent.py                 # Q-Learning agent (memory-efficient)
 │   ├── llm_analyzer.py             # Gemini AI integration
 │   ├── data_fetcher.py             # External API orchestration
 │   ├── supabase_client.py          # Cloud database interface
 │   └── prediction_tracker.py       # Prediction verification system
 │
-├── � data/                         # Data Storage (gitignored)
+├── 📂 data/                         # Data Storage (gitignored)
 │   ├── india_data.db               # SQLite flight history
 │   ├── rl_q_table.json             # RL agent state
 │   ├── rl_metrics.json             # Learning metrics
 │   └── pending_predictions.json    # Unverified predictions
 │
-├── � models/                       # Trained Models
+├── 📂 models/                       # Trained Models
 │   ├── delay_model.pkl             # ML ensemble (5.2 MB)
 │   └── label_encoders.pkl          # Feature encoders
 │
-├── � config/                       # Configuration
+├── 📂 config/                       # Configuration
 │   ├── major_routes.json           # 20 tracked routes
 │   └── model_comparison_report.json
 │
-├── � scripts/                      # Automation Scripts
+├── 📂 scripts/                      # Automation Scripts
 │   ├── update_latest_data.py       # Daily data collection
 │   └── process_history.py          # Historical data processor
 │
-├── � tests/                        # Testing Suite
-│   ├── render_test.py              # Pre-deployment validation
+├── 📂 tests/                        # Testing Suite
 │   └── test.py                     # Model benchmarking
 │
-├── � templates/                    # Frontend Templates
+├── 📂 templates/                    # Frontend Templates
 │   ├── index.html                  # Search interface
 │   └── dashboard.html              # Results display
 │
-├── � static/                       # Static Assets
+├── 📂 static/                       # Static Assets
 │   ├── style.css                   # Styling
 │   └── script.js                   # Client-side logic
 │
@@ -220,15 +218,7 @@ FLIGHT_AI/
 - **Learning Rate:** 0.1
 - **Discount Factor:** 0.95
 - **Epsilon:** 0.254 (decays with experience)
-
-### Deep Q-Network (DQN)
-- **Framework:** PyTorch
-- **Architecture:** 4-layer neural network (128→64→32→5)
-- **Features:**
-  - Experience replay buffer
-  - Target network for stability
-  - Batch learning
-- **Actions:** [-20%, -10%, 0%, +10%, +20%]
+- **Memory Usage:** ~10KB (no PyTorch required)
 
 ---
 
@@ -280,8 +270,8 @@ python tests/test.py
 ```
 
 **Compares:**
-- XGBoost vs BiLSTM
-- Q-Learning vs DQN
+- XGBoost performance metrics
+- Q-Learning agent benchmarks
 - Generates performance report
 
 ---
@@ -360,7 +350,7 @@ curl -X POST https://flight-ai-f4vr.onrender.com/predict_status \
 ### Backend
 - **Framework:** Flask
 - **ML:** scikit-learn, XGBoost
-- **DL:** PyTorch
+- **RL:** Q-Learning (NumPy)
 - **Database:** SQLite, Supabase
 - **APIs:** AviationStack, Open-Meteo, AeroDataBox, NewsAPI
 

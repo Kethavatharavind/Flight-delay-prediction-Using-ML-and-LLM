@@ -10,15 +10,8 @@ import os
 import json
 from dotenv import load_dotenv
 import google.generativeai as genai
-# Using DQN (Deep Q-Network) instead of Q-Learning for better generalization
-try:
-    from rl_agent_dqn import get_dqn_agent
-    DQN_AVAILABLE = True
-    dqn_agent = get_dqn_agent()
-except ImportError:
-    import rl_agent
-    DQN_AVAILABLE = False
-    dqn_agent = None
+# Using Q-Learning agent (memory-efficient, no PyTorch required)
+import rl_agent
 import logging
 
 # Import ML model
@@ -116,6 +109,70 @@ def initialize_gemini():
 # Initialize on module load
 if GEMINI_API_KEYS:
     initialize_gemini()
+
+# ========================================
+# OpenRouter Fallback Configuration
+# ========================================
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Best free models (Dec 2024) - with fallback chain
+OPENROUTER_FREE_MODELS = [
+    "tngtech/deepseek-r1t-chimera:free",    # Newest: Chimera variant with reasoning
+    "deepseek/deepseek-v3:free",            # Backup: 671B params, excellent reasoning
+    "google/gemma-3-27b:free",              # Third: 27B params, good multilingual
+    "meta-llama/llama-3.1-8b-instruct:free" # Final fallback: reliable, fast
+]
+OPENROUTER_FREE_MODEL = OPENROUTER_FREE_MODELS[0]  # Use best model
+
+if OPENROUTER_API_KEY:
+    logger.info(f"✅ OpenRouter API configured (Fallback: {OPENROUTER_FREE_MODEL})")
+else:
+    logger.info("⚠️ OpenRouter API not configured - no fallback available")
+
+def call_openrouter(prompt, max_tokens=2048):
+    """Call OpenRouter API as fallback when Gemini fails
+    
+    Tries multiple free models in order of quality
+    """
+    if not OPENROUTER_API_KEY:
+        raise Exception("OpenRouter API key not configured")
+    
+    import requests
+    
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/flight-prediction-system",  # For OpenRouter rankings
+        "X-Title": "Flight Delay Prediction System"  # App name for rankings
+    }
+    
+    # Try each model in fallback chain
+    for model_name in OPENROUTER_FREE_MODELS:
+        try:
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful flight prediction assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.2
+            }
+            
+            response = requests.post(OPENROUTER_BASE_URL, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            logger.info(f"✅ OpenRouter success with model: {model_name}")
+            return data['choices'][0]['message']['content']
+            
+        except Exception as e:
+            logger.warning(f"⚠️ {model_name} failed: {str(e)[:80]}, trying next model...")
+            continue
+    
+    # All models failed
+    raise Exception("All OpenRouter models failed")
 
 
 
@@ -231,7 +288,7 @@ def calculate_fallback_prediction(signals):
         avg_delay_mins = 30.0
         flights_count = 0
         confidence = 40
-        risk_factors.append("⚠️ No Historical Data - Using industry baseline (22%)")
+        risk_factors.append("⚠️ Using industry baseline (22%) - Limited route data in database")
     
     
     
@@ -466,7 +523,7 @@ def generate_user_friendly_summary_fallback(prediction_data, signals):
         if historical_issues and 'good' in historical_issues[0].lower():
             summary += "This route has an excellent track record with minimal delays. "
         else:
-            summary += "Historical data suggests reliable performance. "
+            summary += "Database shows reliable performance. "
         
         if not weather_issues or any(word in str(weather_issues).lower() for word in ['clear', 'good', '☀️']):
             summary += "Weather conditions are favorable at both airports. "
@@ -519,7 +576,7 @@ def generate_user_friendly_summary_fallback(prediction_data, signals):
                 summary += f"   • {issue.replace('•', '').replace('🔴', '').strip()}\n"
         
         if historical_issues:
-            summary += f"\n📉 **Historical Data:**\n"
+            summary += f"\n📉 **Database Records:**\n"
             summary += f"   • {historical_issues[0].replace('•', '').strip()}\n"
         
         if not (weather_issues or airport_issues or historical_issues):
@@ -634,7 +691,18 @@ IMPORTANT RULES:
         return response.text.strip()
         
     except Exception as e:
-        logger.warning(f"LLM summary generation failed: {e}")
+        logger.warning(f"Gemini summary generation failed: {e}")
+        
+        # Try OpenRouter fallback
+        if OPENROUTER_API_KEY:
+            try:
+                logger.info("🔄 Trying OpenRouter fallback...")
+                response_text = call_openrouter(summary_prompt)
+                logger.info("✅ Generated summary with OpenRouter (fallback)")
+                return response_text.strip()
+            except Exception as openrouter_error:
+                logger.warning(f"OpenRouter fallback also failed: {openrouter_error}")
+        
         logger.info("Using non-LLM fallback summary")
         return generate_enhanced_fallback_summary(prediction_data, signals, breakdown, flight_related_news)
 
@@ -851,7 +919,7 @@ def predict_flight_outcome(signals, origin, dest, date, dep_time, arr_time, flig
 **DATE:** {date}
 **TIMES:** Depart {dep_time} | Arrive {arr_time}
 
-**HISTORICAL DATA:**
+**DATABASE RECORDS:**
 {json.dumps(signals.get('long_term_history_seasonal', {}), indent=2)}
 
 **RECENT TRENDS (Last 6 months):**
@@ -936,7 +1004,7 @@ def get_chat_response(message, context):
     pred = context.get('prediction_probabilities', {})
     
     if model is None:
-        return f"Based on the prediction: Delay probability is {pred.get('probability_delay', 'N/A')}%. The analysis considers historical data, recent trends, weather conditions, and airport status. See the detailed justification above for specifics."
+        return f"Based on the prediction: Delay probability is {pred.get('probability_delay', 'N/A')}%. The analysis considers database records, recent trends, weather conditions, and airport status. See the detailed justification above for specifics."
     
     chat_prompt = f"""
 Answer this question about a flight prediction concisely:

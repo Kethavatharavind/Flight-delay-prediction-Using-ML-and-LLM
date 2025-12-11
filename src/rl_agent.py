@@ -174,15 +174,15 @@ class FlightPredictionRLAgent:
         Returns:
             State string representing current situation
         """
-        hist = signals.get('long_term_history_seasonal', {})
+        # Use recent database performance for delay rate
         recent = signals.get('recent_performance_last_6_months', {})
         weather_origin = signals.get('live_forecast_origin', {})
         weather_dest = signals.get('live_forecast_destination', {})
         airport_origin = signals.get('live_context_origin_airport', {})
         airport_dest = signals.get('live_context_destination_airport', {})
         
-        
-        delay_rate = hist.get('delay_rate')
+        # Categorize delay rate from database
+        delay_rate = recent.get('delay_rate_percent')
         if delay_rate is None:
             delay_bucket = 'unknown'
         elif delay_rate < self.DELAY_THRESHOLD_LOW:
@@ -545,36 +545,3 @@ def get_agent_stats():
     return agent.get_stats()
 
 
-if __name__ == "__main__":
-    
-    agent = FlightPredictionRLAgent()
-    print(json.dumps(agent.get_stats(), indent=2))
-    
-    
-    print("\n" + "="*60)
-    print("EXAMPLE USAGE:")
-    print("="*60)
-    
-    
-    test_signals = {
-        'long_term_history_seasonal': {'delay_rate': 25},
-        'recent_performance_last_6_months': {'delay_rate_percent': 35},
-        'live_forecast_origin': {'condition': 'Rain'},
-        'live_forecast_destination': {'condition': 'Clear'},
-        'live_context_origin_airport': {'delay_is_active': 'True'},
-        'live_context_destination_airport': {'delay_is_active': 'False'}
-    }
-    
-    base_prob = 50
-    adjusted_prob, rl_info = agent.adjust_prediction(
-        base_prob, test_signals, 
-        '2024-12-02', '2024-12-02T14:30:00'
-    )
-    
-    print(f"\nBase Prediction: {base_prob}%")
-    print(f"RL Adjusted: {adjusted_prob}%")
-    print(f"Action: {rl_info['action_value']:+d}%")
-    
-    
-    reward = agent.learn_from_outcome(rl_info, True, adjusted_prob, test_signals)
-    print(f"\nLearning Reward: {reward:.3f}")

@@ -33,16 +33,6 @@ AERODATABOX_HEADERS = {
 } if AERODATABOX_API_KEY else {}
 
 
-LONG_TERM_STATS = {}
-long_term_path = os.path.join(PROJECT_ROOT, 'data', 'long_term_summary.json')
-try:
-    with open(long_term_path, 'r') as f:
-        LONG_TERM_STATS = json.load(f)
-    logger.info(f"✅ Loaded {len(LONG_TERM_STATS)} historical records")
-except FileNotFoundError:
-    logger.warning("⚠️ long_term_summary.json not found")
-except Exception as e:
-    logger.error(f"❌ Error loading historical data: {e}")
 
 # Database path - using new folder structure
 DB_NAME = os.path.join(PROJECT_ROOT, 'data', 'india_data.db')
@@ -124,34 +114,15 @@ IATA_LOCATION_MAP = {
 }
 
 
-@lru_cache(maxsize=128)
-def get_flights_by_route_cached(origin_iata, dest_iata, date_str, api_key_hash):
-    """Cached version of flight search"""
-    return _get_flights_by_route_impl(origin_iata, dest_iata, date_str)
-
-
-def _get_flights_by_route_impl(origin_iata, dest_iata, date_str):
-    """Implementation of flight search"""
+def get_flights_by_route(origin_iata, dest_iata, date_str):
+    """Public API for flight search
+    
+    Assumes validation already done by caller (app.py)
+    """
     if not AVIATIONSTACK_API_KEY:
         return {"error": "AviationStack API Key Missing"}
     
     logger.info(f"🔍 Fetching flights: {origin_iata} → {dest_iata} on {date_str}")
-    
-    
-    try:
-        flight_date = datetime.strptime(date_str, '%Y-%m-%d')
-        days_ahead = (flight_date - datetime.now()).days
-        
-        if days_ahead < 8:
-            min_date = (datetime.now() + timedelta(days=8)).strftime('%Y-%m-%d')
-            return {"error": f"Date must be at least 8 days ahead. Minimum: {min_date}"}
-        
-        if days_ahead > 180:
-            max_date = (datetime.now() + timedelta(days=180)).strftime('%Y-%m-%d')
-            return {"error": f"Date too far in future. Maximum: {max_date}"}
-            
-    except ValueError:
-        return {"error": "Invalid date format. Use YYYY-MM-DD"}
     
     params = {
         'access_key': AVIATIONSTACK_API_KEY,
@@ -224,11 +195,6 @@ def _get_flights_by_route_impl(origin_iata, dest_iata, date_str):
         return {"error": f"Unexpected error: {str(e)}"}
 
 
-def get_flights_by_route(origin_iata, dest_iata, date_str):
-    """Public API with caching"""
-    api_key_hash = hashlib.md5(AVIATIONSTACK_API_KEY.encode()).hexdigest() if AVIATIONSTACK_API_KEY else "none"
-    return get_flights_by_route_cached(origin_iata, dest_iata, date_str, api_key_hash)
-
 
 @lru_cache(maxsize=256)
 def get_weather_forecast(airport_code, flight_date_str, flight_time_str):
@@ -245,24 +211,35 @@ def get_weather_forecast(airport_code, flight_date_str, flight_time_str):
             "condition": "Unknown"
         }
     
+    # Try fetching weather with retry logic
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            target_dt = datetime.fromisoformat(flight_time_str.replace('Z', '+00:00'))
+            target_date = target_dt.strftime('%Y-%m-%d')
+            
+            url = "https://api.open-meteo.com/v1/forecast"
+            params = {
+                'latitude': location['lat'],
+                'longitude': location['lon'],
+                'hourly': 'temperature_2m,precipitation_probability,windspeed_10m,weathercode',
+                'start_date': target_date,
+                'end_date': target_date,
+                'timezone': 'auto'
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            break  # Success, exit retry loop
+        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"⚠️ Weather API timeout (attempt {attempt + 1}/{max_retries}), retrying...")
+                continue
+            else:
+                raise  # Re-raise on final attempt
+    
     try:
-        
-        target_dt = datetime.fromisoformat(flight_time_str.replace('Z', '+00:00'))
-        target_date = target_dt.strftime('%Y-%m-%d')
-        
-        url = "https://api.open-meteo.com/v1/forecast"
-        params = {
-            'latitude': location['lat'],
-            'longitude': location['lon'],
-            'hourly': 'temperature_2m,precipitation_probability,windspeed_10m,weathercode',
-            'start_date': target_date,
-            'end_date': target_date,
-            'timezone': 'auto'
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
         
         hourly = data.get('hourly', {})
         times = hourly.get('time', [])
@@ -325,62 +302,6 @@ def get_weather_forecast(airport_code, flight_date_str, flight_time_str):
         }
 
 
-def get_long_term_history(flight_number, date_str, origin_iata=None, dest_iata=None):
-    """
-    Fetch historical statistics using route-level keys (no month)
-    ✅ UPDATED: Now uses flight_number_origin_destination format
-    """
-    if not LONG_TERM_STATS:
-        return {
-            "delay_rate": None,
-            "cancel_rate": None,
-            "avg_delay_time": None,
-            "total_flights_analyzed": 0,
-            "note": "Historical data not available"
-        }
-    
-    try:
-        
-        if origin_iata and dest_iata:
-            key = f"{flight_number}_{origin_iata}_{dest_iata}"
-            
-            if key in LONG_TERM_STATS:
-                logger.info(f"✅ Historical data found: {key}")
-                return LONG_TERM_STATS[key]
-            
-            
-            generic_fn = "".join(filter(str.isdigit, str(flight_number)))
-            if generic_fn:
-                key = f"{generic_fn}_{origin_iata}_{dest_iata}"
-                if key in LONG_TERM_STATS:
-                    logger.info(f"✅ Historical data found (generic): {key}")
-                    return LONG_TERM_STATS[key]
-        
-        
-        for key, stats in LONG_TERM_STATS.items():
-            if key.startswith(f"{flight_number}_"):
-                logger.info(f"✅ Historical data found (partial match): {key}")
-                return stats
-        
-        logger.warning(f"⚠️ No historical data for {flight_number}")
-        return {
-            "delay_rate": None,
-            "cancel_rate": None,
-            "avg_delay_time": None,
-            "total_flights_analyzed": 0,
-            "note": f"No historical data for this route"
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Historical data error: {e}")
-        return {
-            "delay_rate": None,
-            "cancel_rate": None,
-            "avg_delay_time": None,
-            "total_flights_analyzed": 0,
-            "error": str(e)
-        }
-
 
 def get_recent_performance(origin_iata, dest_iata, flight_number):
     """Query recent database"""
@@ -436,25 +357,12 @@ def get_recent_performance(origin_iata, dest_iata, flight_number):
         return {"flights_analyzed": 0, "error": str(e)}
 
 
-@lru_cache(maxsize=128)
-def get_airport_status(airport_code):
-    """
-    Return airport status (AeroDataBox API removed - was causing 400 errors)
-    Always returns 'Normal Operations' as default
-    """
-    logger.info(f"🏢 Airport: {airport_code} (default status)")
-    
-    return {
-        "code": airport_code,
-        "delay_is_active": "False",
-        "current_reason": "Normal Operations",
-        "current_avg_delay_mins": 0
-    }
 
 
 def get_news(query):
     """Fetch recent news"""
     if not NEWS_API_KEY:
+        logger.info("ℹ️ News API disabled (no API key configured)")
         return []
     
     try:
@@ -476,6 +384,12 @@ def get_news(query):
         data = response.json()
         
         articles = [f"{a['title']}" for a in data.get('articles', [])]
+        
+        if articles:
+            logger.info(f"📰 Found {len(articles)} news articles for query: {query[:50]}")
+        else:
+            logger.info(f"📰 No news articles found for query: {query[:50]}")
+        
         return articles
         
     except Exception as e:
@@ -487,11 +401,9 @@ def get_prediction_signals(origin_iata, dest_iata, date_str, flight_number, depa
     """Gather all prediction signals"""
     logger.info(f"📊 Gathering data for {flight_number}")
     
-    
-    long_term_history = get_long_term_history(flight_number, date_str, origin_iata, dest_iata)
-    
-    
+    # Get recent performance from database
     recent_performance = get_recent_performance(origin_iata, dest_iata, flight_number)
+
     
     
     origin_forecast = get_weather_forecast(origin_iata, date_str, departure_time)
@@ -502,14 +414,15 @@ def get_prediction_signals(origin_iata, dest_iata, date_str, flight_number, depa
     except:
         dest_forecast = {"error": "Invalid time format", "airport": dest_iata, "condition": "Unknown"}
     
-    origin_status = get_airport_status(origin_iata)
-    dest_status = get_airport_status(dest_iata)
+    # Default airport status (no live API available)
+    origin_status = {"code": origin_iata, "delay_is_active": "False", "current_reason": "Normal Operations"}
+    dest_status = {"code": dest_iata, "delay_is_active": "False", "current_reason": "Normal Operations"}
+
     
     airline_code = "".join(filter(str.isalpha, str(flight_number)[:2]))
     news = get_news(f"({origin_iata} OR {dest_iata} airport) OR (airline {airline_code})")
     
     signals = {
-        "long_term_history_seasonal": long_term_history,
         "recent_performance_last_6_months": recent_performance,
         "live_forecast_origin": origin_forecast,
         "live_forecast_destination": dest_forecast,

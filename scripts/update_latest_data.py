@@ -277,7 +277,7 @@ def run_update():
 
     conn.commit()
     
-    archive_old_data(conn, days_to_keep=180)
+    archive_old_data(conn, days_to_keep=365)
     
     conn.close()
 

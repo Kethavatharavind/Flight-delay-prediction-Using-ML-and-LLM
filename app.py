@@ -120,7 +120,7 @@ def get_available_routes():
 @app.route('/get_min_date', methods=['GET'])
 def get_min_date():
     """Return minimum valid date"""
-    min_date = (datetime.now() + timedelta(days=8)).strftime('%Y-%m-%d')
+    min_date = (datetime.now() + timedelta(days=9)).strftime('%Y-%m-%d')
     max_date = (datetime.now() + timedelta(days=180)).strftime('%Y-%m-%d')
     return jsonify({
         "min_date": min_date,

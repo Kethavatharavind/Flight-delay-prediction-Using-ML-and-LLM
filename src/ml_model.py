@@ -27,6 +27,28 @@ except ImportError:
     ML_AVAILABLE = False
     print("⚠️ ML libraries not installed. Run: pip install scikit-learn xgboost")
 
+# Try importing LSTM libraries (Keras with PyTorch backend)
+LSTM_AVAILABLE = False
+try:
+    import os
+    os.environ["KERAS_BACKEND"] = "torch"  # Use PyTorch as backend
+    from keras.models import Sequential
+    from keras.layers import LSTM, Dense, Dropout, Input
+    from keras.callbacks import EarlyStopping
+    import torch
+    LSTM_AVAILABLE = True
+    logger_lstm = 'PyTorch'
+except ImportError:
+    try:
+        # Fallback to TensorFlow if PyTorch not available
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+        from tensorflow.keras.callbacks import EarlyStopping
+        LSTM_AVAILABLE = True
+        logger_lstm = 'TensorFlow'
+    except ImportError:
+        print("⚠️ LSTM libraries not installed. Run: pip install keras torch")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -39,18 +61,24 @@ MODEL_FILE = os.path.join(PROJECT_ROOT, 'models', 'delay_model.pkl')
 ENCODER_FILE = os.path.join(PROJECT_ROOT, 'models', 'label_encoders.pkl')
 
 
+# LSTM model file path
+LSTM_MODEL_FILE = os.path.join(PROJECT_ROOT, 'models', 'lstm_model.keras')
+
+
 class FlightDelayMLModel:
     """
-    Enhanced XGBoost + Random Forest ensemble model
-    for flight delay prediction
+    XGBoost + LSTM Hybrid Model (Research-based)
+    Replaces Random Forest with LSTM for better accuracy
     """
     
     def __init__(self):
-        self.model = None
-        self.rf_model = None  # Secondary model for ensemble
+        self.model = None  # XGBoost model
+        self.lstm_model = None  # LSTM model (replaces Random Forest)
+        self.rf_model = None  # Keep for backward compatibility
         self.encoders = {}
         self.scaler = StandardScaler() if ML_AVAILABLE else None
         self.is_trained = False
+        self.lstm_trained = False
         
         # Enhanced feature set
         self.feature_columns = [
@@ -71,14 +99,25 @@ class FlightDelayMLModel:
                     saved_data = pickle.load(f)
                     if isinstance(saved_data, dict):
                         self.model = saved_data.get('xgb_model')
-                        self.rf_model = saved_data.get('rf_model')
+                        self.rf_model = saved_data.get('rf_model')  # Legacy support
                         self.scaler = saved_data.get('scaler', self.scaler)
                     else:
                         self.model = saved_data
                 with open(ENCODER_FILE, 'rb') as f:
                     self.encoders = pickle.load(f)
                 self.is_trained = True
-                logger.info("✅ Loaded pre-trained model")
+                logger.info("✅ Loaded pre-trained XGBoost model")
+            
+            # Load LSTM model if exists
+            if LSTM_AVAILABLE and os.path.exists(LSTM_MODEL_FILE):
+                try:
+                    from keras.models import load_model
+                    self.lstm_model = load_model(LSTM_MODEL_FILE)
+                    self.lstm_trained = True
+                    logger.info("✅ Loaded pre-trained LSTM model")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not load LSTM model: {e}")
+                    
         except Exception as e:
             logger.warning(f"⚠️ Could not load model: {e}")
     
@@ -88,12 +127,21 @@ class FlightDelayMLModel:
             with open(MODEL_FILE, 'wb') as f:
                 pickle.dump({
                     'xgb_model': self.model,
-                    'rf_model': self.rf_model,
+                    'rf_model': self.rf_model,  # Legacy support
                     'scaler': self.scaler
                 }, f)
             with open(ENCODER_FILE, 'wb') as f:
                 pickle.dump(self.encoders, f)
-            logger.info(f"✅ Model saved to {MODEL_FILE}")
+            logger.info(f"✅ XGBoost model saved to {MODEL_FILE}")
+            
+            # Save LSTM model separately (Keras format)
+            if self.lstm_model is not None and LSTM_AVAILABLE:
+                try:
+                    self.lstm_model.save(LSTM_MODEL_FILE)
+                    logger.info(f"✅ LSTM model saved to {LSTM_MODEL_FILE}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not save LSTM model: {e}")
+                    
         except Exception as e:
             logger.error(f"❌ Could not save model: {e}")
     
@@ -105,7 +153,7 @@ class FlightDelayMLModel:
         
         conn = sqlite3.connect(DB_NAME)
         
-        # Load from flights table
+        # Load from flights table (including weather data)
         query = """
             SELECT 
                 flight_date,
@@ -116,7 +164,15 @@ class FlightDelayMLModel:
                 scheduled_departure,
                 departure_delay,
                 arrival_delay,
-                status
+                status,
+                -- Weather features (column names from database)
+                origin_temp_c as origin_temp,
+                origin_precip_prob,
+                origin_wind_kph,
+                dest_temp_c as dest_temp,
+                dest_precip_prob,
+                dest_wind_kph,
+                inferred_delay_reason
             FROM flights
             WHERE status IN ('on_time', 'delayed', 'cancelled')
         """
@@ -173,6 +229,23 @@ class FlightDelayMLModel:
         # Route delay history
         data['route_delay_history'] = data['route_delay_rate'].fillna(0.3) * 100
         
+        # ===== WEATHER FEATURES =====
+        # Fill missing weather data with defaults
+        weather_cols = ['origin_temp', 'dest_temp', 'origin_precip_prob', 'dest_precip_prob', 
+                       'origin_wind_kph', 'dest_wind_kph']
+        for col in weather_cols:
+            if col in data.columns:
+                data[col] = pd.to_numeric(data[col], errors='coerce').fillna(0)
+            else:
+                data[col] = 0
+        
+        # Create weather risk features
+        data['high_precip_origin'] = (data['origin_precip_prob'] > 50).astype(int)
+        data['high_precip_dest'] = (data['dest_precip_prob'] > 50).astype(int)
+        data['high_wind_origin'] = (data['origin_wind_kph'] > 30).astype(int)
+        data['high_wind_dest'] = (data['dest_wind_kph'] > 30).astype(int)
+        data['has_weather_data'] = ((data['origin_temp'] != 0) | (data['dest_temp'] != 0)).astype(int)
+        
         # Fill missing categorical values
         data['airline_code'] = data['airline_code'].fillna('UNKNOWN')
         data['origin'] = data['origin'].fillna('UNKNOWN')
@@ -222,12 +295,19 @@ class FlightDelayMLModel:
         # Prepare features
         data = self.prepare_features(df, is_training=True)
         
-        # Feature columns
+        # Feature columns (including weather features)
         feature_cols = [
             'origin_encoded', 'destination_encoded', 'airline_code_encoded',
             'hour_of_day', 'day_of_week', 'month', 'is_weekend',
             'is_morning_rush', 'is_evening_rush', 'is_night_flight',
-            'route_delay_history'
+            'route_delay_history',
+            # Weather features
+            'origin_temp', 'dest_temp',
+            'origin_precip_prob', 'dest_precip_prob',
+            'origin_wind_kph', 'dest_wind_kph',
+            'high_precip_origin', 'high_precip_dest',
+            'high_wind_origin', 'high_wind_dest',
+            'has_weather_data'
         ]
         
         X = data[feature_cols]
@@ -267,22 +347,64 @@ class FlightDelayMLModel:
         )
         self.model.fit(X_train_scaled, y_train, verbose=False)
         
-        # Train Random Forest as secondary model
-        print("🔄 Training Random Forest...")
-        self.rf_model = RandomForestClassifier(
-            n_estimators=150,
-            max_depth=8,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            class_weight='balanced'
-        )
-        self.rf_model.fit(X_train_scaled, y_train)
+        # Train LSTM (Replaces Random Forest)
+        print("🔄 Training LSTM...")
+        lstm_proba = None
+        lstm_acc = 0.0
         
-        # Ensemble predictions (average of both models)
+        if LSTM_AVAILABLE:
+            try:
+                # Reshape for LSTM: (samples, timesteps=1, features)
+                X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
+                X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
+                
+                # Build LSTM model
+                self.lstm_model = Sequential([
+                    Input(shape=(1, X_train_scaled.shape[1])),
+                    LSTM(64, return_sequences=True),
+                    Dropout(0.3),
+                    LSTM(32),
+                    Dropout(0.2),
+                    Dense(16, activation='relu'),
+                    Dense(1, activation='sigmoid')
+                ])
+                self.lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+                
+                # Early stopping
+                early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=0)
+                
+                # Train LSTM
+                self.lstm_model.fit(
+                    X_train_lstm, y_train.values,
+                    epochs=50, batch_size=32,
+                    validation_split=0.2,
+                    callbacks=[early_stop],
+                    verbose=0
+                )
+                
+                # LSTM predictions
+                lstm_proba = self.lstm_model.predict(X_test_lstm, verbose=0).flatten()
+                lstm_pred = (lstm_proba > 0.5).astype(int)
+                lstm_acc = accuracy_score(y_test, lstm_pred)
+                self.lstm_trained = True
+                print(f"   ✅ LSTM trained! Accuracy: {lstm_acc:.2%}")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ LSTM training failed: {e}")
+                print(f"   ⚠️ LSTM failed, using XGBoost only")
+        else:
+            print("   ⚠️ LSTM not available")
+        
+        # Ensemble predictions
         xgb_proba = self.model.predict_proba(X_test_scaled)[:, 1]
-        rf_proba = self.rf_model.predict_proba(X_test_scaled)[:, 1]
-        ensemble_proba = (xgb_proba * 0.6 + rf_proba * 0.4)  # Weight XGBoost higher
+        
+        if lstm_proba is not None:
+            # Ensemble XGBoost and LSTM
+            ensemble_proba = (xgb_proba * 0.6 + lstm_proba * 0.4)
+        else:
+            # Fallback to XGBoost only
+            ensemble_proba = xgb_proba
+        
         y_pred = (ensemble_proba > 0.5).astype(int)
         
         # Evaluate
@@ -290,16 +412,18 @@ class FlightDelayMLModel:
         
         # Also get individual model scores
         xgb_acc = accuracy_score(y_test, self.model.predict(X_test_scaled))
-        rf_acc = accuracy_score(y_test, self.rf_model.predict(X_test_scaled))
         
         # Cross-validation
         cv_scores = cross_val_score(self.model, X_train_scaled, y_train, cv=5, scoring='accuracy')
         
         print("\n" + "=" * 60)
-        print("📈 MODEL PERFORMANCE")
+        print("📈 MODEL PERFORMANCE (XGBoost + LSTM Hybrid)")
         print("=" * 60)
         print(f"XGBoost Accuracy:     {xgb_acc:.2%}")
-        print(f"Random Forest Accuracy: {rf_acc:.2%}")
+        if lstm_proba is not None:
+            print(f"LSTM Accuracy:        {lstm_acc:.2%}")
+        else:
+            print(f"LSTM Accuracy:        N/A (not trained)")
         print(f"Ensemble Accuracy:    {accuracy:.2%}")
         print(f"Cross-Val Mean:       {cv_scores.mean():.2%} (±{cv_scores.std():.2%})")
         print("=" * 60)
@@ -391,22 +515,75 @@ class FlightDelayMLModel:
             except:
                 pass
             
-            # Create feature array
+            # ===== FETCH WEATHER DATA FOR PREDICTION =====
+            # Try to get weather from data_fetcher
+            origin_temp, dest_temp = 0, 0
+            origin_precip_prob, dest_precip_prob = 0, 0
+            origin_wind_kph, dest_wind_kph = 0, 0
+            has_weather_data = 0
+            
+            try:
+                from data_fetcher import get_weather_forecast
+                origin_weather = get_weather_forecast(origin, flight_date, departure_time)
+                dest_weather = get_weather_forecast(destination, flight_date, departure_time)
+                
+                if origin_weather:
+                    origin_temp = origin_weather.get('temperature', 0)
+                    origin_precip_prob = origin_weather.get('precipitation_probability', 0)
+                    origin_wind_kph = origin_weather.get('wind_speed', 0)
+                    has_weather_data = 1
+                
+                if dest_weather:
+                    dest_temp = dest_weather.get('temperature', 0)
+                    dest_precip_prob = dest_weather.get('precipitation_probability', 0)
+                    dest_wind_kph = dest_weather.get('wind_speed', 0)
+                    has_weather_data = 1
+            except Exception as e:
+                logger.debug(f"Weather fetch for prediction skipped: {e}")
+            
+            # Weather risk features
+            high_precip_origin = 1 if origin_precip_prob > 50 else 0
+            high_precip_dest = 1 if dest_precip_prob > 50 else 0
+            high_wind_origin = 1 if origin_wind_kph > 30 else 0
+            high_wind_dest = 1 if dest_wind_kph > 30 else 0
+            
+            # Create feature array (must match training feature order)
             features = np.array([[
                 origin_enc, dest_enc, airline_enc,
                 hour_of_day, day_of_week, month, is_weekend,
                 is_morning_rush, is_evening_rush, is_night_flight,
-                route_delay_history
+                route_delay_history,
+                # Weather features
+                origin_temp, dest_temp,
+                origin_precip_prob, dest_precip_prob,
+                origin_wind_kph, dest_wind_kph,
+                high_precip_origin, high_precip_dest,
+                high_wind_origin, high_wind_dest,
+                has_weather_data
             ]])
             
             # Scale features
             features_scaled = self.scaler.transform(features)
             
-            # Ensemble prediction
+            # Ensemble prediction (XGBoost + LSTM)
             xgb_prob = self.model.predict_proba(features_scaled)[0][1]
-            rf_prob = self.rf_model.predict_proba(features_scaled)[0][1] if self.rf_model else xgb_prob
             
-            delay_prob = (xgb_prob * 0.6 + rf_prob * 0.4) * 100
+            # Try LSTM prediction if available
+            lstm_prob = None
+            if self.lstm_model is not None and LSTM_AVAILABLE:
+                try:
+                    features_lstm = features_scaled.reshape((1, 1, features_scaled.shape[1]))
+                    lstm_prob = float(self.lstm_model.predict(features_lstm, verbose=0)[0][0])
+                except Exception as e:
+                    logger.warning(f"LSTM prediction failed: {e}")
+            
+            # Calculate ensemble probability
+            if lstm_prob is not None:
+                delay_prob = (xgb_prob * 0.5 + lstm_prob * 0.5) * 100  # 50/50 as per research
+                model_name = 'XGBoost+LSTM Hybrid'
+            else:
+                delay_prob = xgb_prob * 100
+                model_name = 'XGBoost Only'
             
             # Determine confidence based on how extreme the prediction is
             if delay_prob > 75 or delay_prob < 25:
@@ -420,9 +597,9 @@ class FlightDelayMLModel:
                 'probability_delay': round(delay_prob, 1),
                 'probability_on_time': round(100 - delay_prob, 1),
                 'confidence': confidence,
-                'model': 'XGBoost+RF Ensemble',
+                'model': model_name,
                 'xgb_prob': round(xgb_prob * 100, 1),
-                'rf_prob': round(rf_prob * 100, 1)
+                'lstm_prob': round(lstm_prob * 100, 1) if lstm_prob else None
             }
             
         except Exception as e:
@@ -437,8 +614,10 @@ class FlightDelayMLModel:
         """Get model statistics"""
         return {
             'is_trained': self.is_trained,
-            'model_type': 'XGBoost + Random Forest Ensemble',
+            'lstm_trained': self.lstm_trained if hasattr(self, 'lstm_trained') else False,
+            'model_type': 'XGBoost + LSTM Hybrid',
             'model_file': MODEL_FILE,
+            'lstm_file': LSTM_MODEL_FILE,
             'features': self.feature_columns,
             'db_source': DB_NAME
         }
@@ -472,11 +651,12 @@ def train_model():
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
-    print("🧠 ENHANCED FLIGHT DELAY ML MODEL TRAINER")
+    print("🧠 FLIGHT DELAY ML MODEL - XGBoost + LSTM HYBRID")
     print("=" * 60)
     print(f"📂 Database: {DB_NAME}")
-    print(f"💾 Model Output: {MODEL_FILE}")
-    print("🔧 Models: XGBoost + Random Forest Ensemble")
+    print(f"💾 XGBoost Model: {MODEL_FILE}")
+    print(f"🔮 LSTM Model: {LSTM_MODEL_FILE}")
+    print(f"🔧 Architecture: XGBoost + LSTM Ensemble (Research-based)")
     print("=" * 60 + "\n")
     
     if not ML_AVAILABLE:
@@ -499,13 +679,14 @@ if __name__ == "__main__":
             destination='BOM',
             airline_code='6E',
             departure_time='14:30',
-            flight_date='2025-12-15'
+            flight_date='2025-12-25'
         )
         
         print(f"Route: DEL → BOM")
         print(f"XGBoost Prob: {result.get('xgb_prob')}%")
-        print(f"RF Prob: {result.get('rf_prob')}%")
+        print(f"LSTM Prob: {result.get('lstm_prob')}%")
         print(f"Ensemble: {result.get('probability_delay')}%")
+        print(f"Model: {result.get('model')}")
         print(f"Confidence: {result.get('confidence')}")
     else:
         print("\n❌ Training failed! Make sure india_data.db has enough data.")

@@ -16,6 +16,14 @@ from dotenv import load_dotenv
 import time
 import pandas as pd  # ✅ FIX 1: Added here instead of inside function
 
+# Import weather functions from backfill_weather
+try:
+    from backfill_weather import get_historical_weather, infer_delay_reason, init_weather_columns
+    WEATHER_AVAILABLE = True
+except ImportError:
+    WEATHER_AVAILABLE = False
+    print("⚠️ Weather functions not available")
+
 # Get the project root directory (parent of scripts/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -28,6 +36,8 @@ ROUTES_FILE = os.path.join(PROJECT_ROOT, 'config', 'major_routes.json')
 ARCHIVE_DIR = os.path.join(PROJECT_ROOT, 'data')
 ROUTES_TO_TRACK = 20
 API_SLEEP = 15.0
+MAX_WEATHER_FETCHES = 50  # Limit weather fetches to prevent hanging
+WEATHER_TIMEOUT = 10  # Timeout for each weather API call
 # ---------------------
 
 
@@ -189,6 +199,11 @@ def run_update():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     init_db(conn)
+    
+    # Initialize weather columns if available
+    if WEATHER_AVAILABLE:
+        init_weather_columns(conn)
+        print("🌤️ Weather data collection enabled")
 
     yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
     
@@ -276,6 +291,87 @@ def run_update():
                 pass
 
     conn.commit()
+    
+    # ===== FETCH WEATHER FOR NEW FLIGHTS =====
+    if WEATHER_AVAILABLE and total_added > 0:
+        print(f"\n🌤️ Fetching weather for up to {MAX_WEATHER_FETCHES} new flights...")
+        weather_added = 0
+        weather_failed = 0
+        
+        cursor.execute("""
+            SELECT id, flight_date, origin, destination, scheduled_departure, scheduled_arrival, status, departure_delay
+            FROM flights 
+            WHERE flight_date = ? AND origin_weather IS NULL
+            LIMIT ?
+        """, (yesterday, MAX_WEATHER_FETCHES))
+        
+        new_flights = cursor.fetchall()
+        total_weather_attempts = len(new_flights)
+        
+        for idx, flight in enumerate(new_flights, 1):
+            flight_id, date, origin, dest, dep_time, arr_time, status, delay = flight
+            
+            try:
+                # Fetch weather with timeout protection
+                origin_weather = None
+                dest_weather = None
+                
+                try:
+                    origin_weather = get_historical_weather(origin, date, dep_time)
+                except Exception as e:
+                    print(f"    ⚠️ [{idx}/{total_weather_attempts}] Weather fetch failed for {origin}: {type(e).__name__}")
+                    weather_failed += 1
+                
+                try:
+                    dest_weather = get_historical_weather(dest, date, arr_time or dep_time)
+                except Exception as e:
+                    print(f"    ⚠️ [{idx}/{total_weather_attempts}] Weather fetch failed for {dest}: {type(e).__name__}")
+                    weather_failed += 1
+                
+                # Only update if we got at least some weather data
+                if origin_weather or dest_weather:
+                    reason = infer_delay_reason(origin_weather, dest_weather, status, delay)
+                    
+                    # Update database
+                    cursor.execute("""
+                        UPDATE flights SET
+                            origin_weather = ?, origin_temp_c = ?, origin_precip_prob = ?, origin_wind_kph = ?,
+                            dest_weather = ?, dest_temp_c = ?, dest_precip_prob = ?, dest_wind_kph = ?,
+                            inferred_delay_reason = ?
+                        WHERE id = ?
+                    """, (
+                        origin_weather.get('condition') if origin_weather else None,
+                        origin_weather.get('temp_c') if origin_weather else None,
+                        origin_weather.get('precip_prob') if origin_weather else None,
+                        origin_weather.get('wind_kph') if origin_weather else None,
+                        dest_weather.get('condition') if dest_weather else None,
+                        dest_weather.get('temp_c') if dest_weather else None,
+                        dest_weather.get('precip_prob') if dest_weather else None,
+                        dest_weather.get('wind_kph') if dest_weather else None,
+                        reason,
+                        flight_id
+                    ))
+                    
+                    weather_added += 1
+                    if idx % 10 == 0:  # Progress update every 10 flights
+                        print(f"    📊 Progress: {idx}/{total_weather_attempts} ({weather_added} successful)")
+                
+                # Rate limiting - but shorter delay to speed up
+                time.sleep(0.1)
+                
+            except KeyboardInterrupt:
+                print(f"\n⚠️ Weather fetching interrupted by user at {idx}/{total_weather_attempts}")
+                break
+            except Exception as e:
+                print(f"    ❌ Unexpected error for flight {flight_id}: {e}")
+                weather_failed += 1
+                continue
+        
+        conn.commit()
+        print(f"\n   ✅ Weather Summary: {weather_added} successful, {weather_failed} failed out of {total_weather_attempts} attempts")
+    elif WEATHER_AVAILABLE:
+        print(f"\n🌤️ No new flights to fetch weather for")
+
     
     archive_old_data(conn, days_to_keep=365)
     

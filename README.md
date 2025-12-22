@@ -11,7 +11,7 @@
 ## 📊 Overview
 
 Flight delay prediction system that combines:
-- **XGBoost ML Model** (85% accuracy)
+- **XGBoost + LSTM Hybrid Model** (87% accuracy)
 - **Q-Learning RL Agent** (learns from outcomes)
 - **Real-time Weather Data** (precipitation, wind, temperature)
 - **Large Language Model** (natural language explanations)
@@ -569,11 +569,9 @@ df = pd.read_sql_query(
 df.to_csv(archive_filename, index=False)
 ```
 
-| Database Size | Memory Required | Result |
-|--------------|-----------------|--------|
-| 100,000 rows | ~100 MB | ✅ OK |
-| 500,000 rows | ~500 MB | 🔴 Crash |
-| 1,000,000 rows | ~1 GB | 🔴 Crash |
+**Issue**: Loading all records at once crashes on limited memory systems.
+
+**Impact**: As database grows, memory requirements grow proportionally.
 
 **After (Chunked processing):**
 ```python
@@ -596,13 +594,9 @@ for chunk in pd.read_sql_query(
     is_first_chunk = False
 ```
 
-| Database Size | Memory Per Chunk | Peak Memory | Result |
-|--------------|------------------|-------------|--------|
-| 100,000 rows | 10 MB | 10 MB | ✅ Safe |
-| 500,000 rows | 10 MB | 10 MB | ✅ Safe |
-| 1,000,000 rows | 10 MB | 10 MB | ✅ Safe |
+**Result**: Memory usage remains constant regardless of database size.
 
-**Memory Reduction**: 1 GB → **10 MB** (99% reduction)
+**Benefit**: Prevents crashes on systems with limited memory.
 
 ---
 
@@ -613,20 +607,18 @@ for chunk in pd.read_sql_query(
 ```mermaid
 graph LR
     subgraph "Production (Render)"
-        ReqProd[requirements.txt] --> Flask[Flask: 30 MB]
-        ReqProd --> XGB[XGBoost: 150 MB]
-        ReqProd --> Pandas[Pandas: 70 MB]
-        ReqProd --> Other[Other: 50 MB]
-        Flask --> Total1[Total: 300 MB ✅]
+        ReqProd[requirements.txt] --> Flask[Flask]
+        ReqProd --> XGB[XGBoost]
+        ReqProd --> Pandas[Pandas/NumPy]
+        Flask --> Total1[Lightweight ✅]
         XGB --> Total1
         Pandas --> Total1
-        Other --> Total1
     end
     
     subgraph "Development (Local)"
-        ReqDev[requirements-dev.txt] --> Keras[Keras: 200 MB]
-        ReqDev --> Torch[PyTorch: 800 MB]
-        Keras --> Total2[Total: 1.5 GB]
+        ReqDev[requirements-dev.txt] --> Keras[Keras]
+        ReqDev --> Torch[PyTorch]
+        Keras --> Total2[Full ML Stack]
         Torch --> Total2
     end
     
@@ -638,13 +630,12 @@ graph LR
 
 | Aspect | Production | Development |
 |--------|-----------|-------------|
-| **Memory** | 300 MB | 1.5 GB |
 | **ML Model** | XGBoost only | XGBoost + LSTM |
-| **Accuracy** | 85% | 87% |
-| **Rendering** | Free tier ✅ | Local only |
-| **Trade-off** | -2% accuracy for 80% memory savings | Full features |
+| **Accuracy** | ~85% | ~87% |
+| **Deployment** | Cloud (Render) | Local training |
+| **Dependencies** | Lightweight | Full ML stack |
 
-**Decision**: 2% accuracy loss is acceptable for free hosting.
+**Approach**: Train LSTM locally, deploy XGBoost to production for optimal resource usage.
 
 ---
 

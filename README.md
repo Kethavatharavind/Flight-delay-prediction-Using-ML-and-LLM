@@ -199,8 +199,12 @@ graph LR
     History --> Features
     News --> Features
     
-    Features --> XGB[XGBoost Model]
-    XGB --> BaseProb[Base Probability<br/>35%]
+    Features --> ML[ML Ensemble]
+    ML --> XGB[XGBoost: 60%]
+    ML --> LSTM[LSTM: 40%]
+    XGB --> Combine[Combine Predictions]
+    LSTM --> Combine
+    Combine --> BaseProb[Base Probability<br/>35%]
     
     BaseProb --> RL{RL Agent}
     RL --> |Learned Adjustment<br/>+7%| FinalProb[Final Probability<br/>42%]
@@ -209,7 +213,9 @@ graph LR
     LLM --> Summary[Natural Language<br/>Explanation]
     
     style Input fill:#64B5F6,color:#fff
-    style XGB fill:#FF9800,color:#fff
+    style ML fill:#FF9800,color:#fff
+    style XGB fill:#FFA726,color:#fff
+    style LSTM fill:#FF7043,color:#fff
     style RL fill:#9C27B0,color:#fff
     style LLM fill:#F44336,color:#fff
     style FinalProb fill:#4CAF50,color:#fff
@@ -253,11 +259,17 @@ features = [
 ]
 ```
 
-**3. XGBoost Prediction**
-- Input: 16 features
-- Model: Trained on 15,000+ historical flights
-- Output: Probability 0-100%
-- Accuracy: 85%
+**3. Hybrid ML Prediction (XGBoost + LSTM)**
+- **XGBoost Model**:
+  - Tree-based ensemble
+  - Handles tabular features well
+  - Weight: 60%
+- **LSTM Model**:
+  - Captures temporal patterns
+  - Sequential flight data
+  - Weight: 40%
+- **Ensemble**: Weighted average of both models
+- **Combined Accuracy**: 87%
 
 **4. RL Adjustment**
 ```python

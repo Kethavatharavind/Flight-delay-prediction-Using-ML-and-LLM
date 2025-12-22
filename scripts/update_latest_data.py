@@ -100,9 +100,8 @@ def archive_old_data(conn, days_to_keep=180):
     """
     Archive old data to CSV before deleting from database.
     Keeps last 180 days in database, exports older to CSV.
+    Uses chunked processing to prevent memory overflow.
     """
-    # ✅ FIX: Removed 'import pandas as pd' from here
-    
     cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime('%Y-%m-%d')
     
     cursor = conn.cursor()
@@ -118,13 +117,24 @@ def archive_old_data(conn, days_to_keep=180):
     archive_filename = os.path.join(ARCHIVE_DIR, f"archived_flights_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
     
     try:
-        df = pd.read_sql_query(
+        # ✅ CHUNKED PROCESSING: Process 10,000 rows at a time to prevent memory overflow
+        chunk_size = 10000
+        is_first_chunk = True
+        
+        for chunk in pd.read_sql_query(
             "SELECT * FROM flights WHERE flight_date < ?", 
             conn, 
-            params=(cutoff_date,)
-        )
+            params=(cutoff_date,),
+            chunksize=chunk_size  # Process in chunks
+        ):
+            chunk.to_csv(
+                archive_filename, 
+                mode='a',  # Append mode
+                header=is_first_chunk,  # Header only on first chunk
+                index=False
+            )
+            is_first_chunk = False
         
-        df.to_csv(archive_filename, index=False)
         print(f"✅ Exported to: {archive_filename}")
         
         cursor.execute("DELETE FROM flights WHERE flight_date < ?", (cutoff_date,))
@@ -373,7 +383,7 @@ def run_update():
         print(f"\n🌤️ No new flights to fetch weather for")
 
     
-    archive_old_data(conn, days_to_keep=365)
+    archive_old_data(conn, days_to_keep=180)  # Keep 6 months instead of 1 year
     
     conn.close()
 

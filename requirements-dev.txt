@@ -1,0 +1,14 @@
+# Development/Local Training Dependencies
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+
+# Deep Learning for LSTM model (local training only)
+keras>=3.0.0
+torch>=2.0.0
+
+# Optional: TensorFlow as alternative Keras backend
+# tensorflow>=2.0.0
+
+# Development tools
+jupyter
+matplotlib
+seaborn

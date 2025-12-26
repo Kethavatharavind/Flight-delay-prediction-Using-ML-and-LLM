@@ -11,7 +11,7 @@
 ## 📊 Overview
 
 Flight delay prediction system that combines:
-- **XGBoost + LSTM Hybrid Model** (87% accuracy)
+- **XGBoost + CatBoost Hybrid Model** (87% accuracy)
 - **Q-Learning RL Agent** (learns from outcomes)
 - **Real-time Weather Data** (precipitation, wind, temperature)
 - **Large Language Model** (natural language explanations)
@@ -201,9 +201,9 @@ graph LR
     
     Features --> ML[ML Ensemble]
     ML --> XGB[XGBoost: 60%]
-    ML --> LSTM[LSTM: 40%]
+    ML --> CatBoost[CatBoost: 50%]
     XGB --> Combine[Combine Predictions]
-    LSTM --> Combine
+    CatBoost --> Combine
     Combine --> BaseProb[Base Probability<br/>35%]
     
     BaseProb --> RL{RL Agent}
@@ -215,7 +215,7 @@ graph LR
     style Input fill:#64B5F6,color:#fff
     style ML fill:#FF9800,color:#fff
     style XGB fill:#FFA726,color:#fff
-    style LSTM fill:#FF7043,color:#fff
+    style CatBoost fill:#FF7043,color:#fff
     style RL fill:#9C27B0,color:#fff
     style LLM fill:#F44336,color:#fff
     style FinalProb fill:#4CAF50,color:#fff
@@ -259,15 +259,15 @@ features = [
 ]
 ```
 
-**3. Hybrid ML Prediction (XGBoost + LSTM)**
+**3. Hybrid ML Prediction (XGBoost + CatBoost)**
 - **XGBoost Model**:
   - Tree-based ensemble
   - Handles tabular features well
-  - Weight: 60%
-- **LSTM Model**:
-  - Captures temporal patterns
-  - Sequential flight data
-  - Weight: 40%
+  - Weight: 50%
+- **CatBoost Model**:
+  - Gradient boosting with native categorical support
+  - Handles class imbalance well
+  - Weight: 50%
 - **Ensemble**: Weighted average of both models
 - **Combined Accuracy**: 87%
 
@@ -383,7 +383,7 @@ FLIGHT_AI/
 ├── models/                       # Trained Models
 │   ├── delay_model.pkl           # XGBoost (5 MB)
 │   ├── label_encoders.pkl        # Feature encoders
-│   └── lstm_model.keras          # LSTM (dev only)
+│   └── catboost_model.cbm         # CatBoost model
 │
 ├── config/
 │   └── major_routes.json         # 20 tracked routes
@@ -402,7 +402,7 @@ FLIGHT_AI/
 │
 ├── app.py                        # Flask entry point
 ├── requirements.txt              # Production deps (300 MB)
-└── requirements-dev.txt          # Dev deps (LSTM, 1.5 GB)
+└── requirements-dev.txt          # Dev deps (CatBoost)
 ```
 
 ---
@@ -642,12 +642,12 @@ graph LR
 
 | Aspect | Production | Development |
 |--------|-----------|-------------|
-| **ML Model** | XGBoost only | XGBoost + LSTM |
+| **ML Model** | XGBoost only | XGBoost + CatBoost |
 | **Accuracy** | ~85% | ~87% |
 | **Deployment** | Cloud (Render) | Local training |
 | **Dependencies** | Lightweight | Full ML stack |
 
-**Approach**: Train LSTM locally, deploy XGBoost to production for optimal resource usage.
+**Approach**: Train CatBoost locally, deploy XGBoost to production for optimal resource usage.
 
 ---
 

@@ -106,89 +106,137 @@ def init_weather_columns(conn):
     conn.commit()
 
 
-def get_historical_weather(airport_code, date_str, time_str):
+def get_historical_weather(airport_code, date_str, time_str, max_retries=3):
     """
     Fetch HISTORICAL weather for a past date using Open-Meteo Archive API.
     For future dates, uses regular forecast API.
+    
+    Args:
+        airport_code: IATA code (e.g., 'DEL', 'BOM')
+        date_str: Date in 'YYYY-MM-DD' format
+        time_str: Time in 'HH:MM:SS' format
+        max_retries: Maximum number of retry attempts (default: 3)
+    
+    Returns:
+        dict with weather data or None if failed after retries
     """
     location = IATA_LOCATION_MAP.get(airport_code.upper())
     if not location:
+        logger.warning(f"⚠️ Airport code '{airport_code}' not found in location map")
         return None
     
-    try:
-        # Parse the date
-        flight_date = datetime.strptime(date_str, '%Y-%m-%d')
-        today = datetime.now()
-        
-        # Parse hour from time (e.g., "14:30:00" -> 14)
-        hour = 12  # default
-        if time_str:
-            try:
-                hour = int(time_str.split(':')[0])
-            except:
-                hour = 12
-        
-        # Use archive API for past dates, forecast API for recent/future
-        if flight_date.date() < (today - timedelta(days=5)).date():
-            # Historical weather (archive API) - uses precipitation (mm) not probability
-            url = "https://archive-api.open-meteo.com/v1/archive"
-            hourly_params = 'temperature_2m,precipitation,windspeed_10m,weathercode'
-        else:
-            # Recent/future weather (forecast API) - has precipitation_probability
-            url = "https://api.open-meteo.com/v1/forecast"
-            hourly_params = 'temperature_2m,precipitation_probability,precipitation,windspeed_10m,weathercode'
-        
-        params = {
-            'latitude': location['lat'],
-            'longitude': location['lon'],
-            'hourly': hourly_params,
-            'start_date': date_str,
-            'end_date': date_str,
-            'timezone': 'auto'
-        }
-        
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        hourly = data.get('hourly', {})
-        times = hourly.get('time', [])
-        
-        if not times:
-            return None
-        
-        # Find closest hour
-        temps = hourly.get('temperature_2m', [])
-        precip_probs = hourly.get('precipitation_probability', [])  # Only for forecast API
-        precip_mm = hourly.get('precipitation', [])  # Actual precipitation in mm
-        wind_speeds = hourly.get('windspeed_10m', [])
-        weather_codes = hourly.get('weathercode', [])
-        
-        # Find index closest to our hour
-        closest_idx = min(hour, len(times) - 1)
-        
-        weather_code = weather_codes[closest_idx] if closest_idx < len(weather_codes) else 0
-        condition = WEATHER_CODES.get(weather_code, "Unknown")
-        
-        # Get precipitation - use probability if available, otherwise convert mm to estimated %
-        precip_value = None
-        if precip_probs and closest_idx < len(precip_probs) and precip_probs[closest_idx] is not None:
-            precip_value = precip_probs[closest_idx]
-        elif precip_mm and closest_idx < len(precip_mm) and precip_mm[closest_idx] is not None:
-            # Convert precipitation mm to rough probability (0mm=0%, 5mm+=100%)
-            precip_value = min(100, int(precip_mm[closest_idx] * 20))
-        
-        return {
-            "condition": condition,
-            "temp_c": round(temps[closest_idx], 1) if closest_idx < len(temps) and temps[closest_idx] else None,
-            "precip_prob": precip_value,
-            "wind_kph": round(wind_speeds[closest_idx], 1) if closest_idx < len(wind_speeds) and wind_speeds[closest_idx] else None,
-            "weather_code": weather_code
-        }
-        
-    except Exception as e:
-        logger.warning(f"⚠️ Weather fetch failed for {airport_code} on {date_str}: {e}")
-        return None
+    for attempt in range(max_retries):
+        try:
+            # Parse the date
+            flight_date = datetime.strptime(date_str, '%Y-%m-%d')
+            today = datetime.now()
+            
+            # Parse hour from time (e.g., "14:30:00" -> 14)
+            hour = 12  # default
+            if time_str:
+                try:
+                    hour = int(time_str.split(':')[0])
+                except:
+                    hour = 12
+            
+            # Use archive API for past dates, forecast API for recent/future
+            if flight_date.date() < (today - timedelta(days=5)).date():
+                # Historical weather (archive API) - uses precipitation (mm) not probability
+                url = "https://archive-api.open-meteo.com/v1/archive"
+                hourly_params = 'temperature_2m,precipitation,windspeed_10m,weathercode'
+            else:
+                # Recent/future weather (forecast API) - has precipitation_probability
+                url = "https://api.open-meteo.com/v1/forecast"
+                hourly_params = 'temperature_2m,precipitation_probability,precipitation,windspeed_10m,weathercode'
+            
+            params = {
+                'latitude': location['lat'],
+                'longitude': location['lon'],
+                'hourly': hourly_params,
+                'start_date': date_str,
+                'end_date': date_str,
+                'timezone': 'auto'
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Validate response structure
+            hourly = data.get('hourly', {})
+            times = hourly.get('time', [])
+            
+            if not times:
+                logger.warning(f"⚠️ No hourly data returned for {airport_code} on {date_str}")
+                return None
+            
+            # Find closest hour
+            temps = hourly.get('temperature_2m', [])
+            precip_probs = hourly.get('precipitation_probability', [])  # Only for forecast API
+            precip_mm = hourly.get('precipitation', [])  # Actual precipitation in mm
+            wind_speeds = hourly.get('windspeed_10m', [])
+            weather_codes = hourly.get('weathercode', [])
+            
+            # Validate we have essential data
+            if not temps or not weather_codes:
+                logger.warning(f"⚠️ Incomplete weather data for {airport_code} on {date_str}")
+                return None
+            
+            # Find index closest to our hour
+            closest_idx = min(hour, len(times) - 1)
+            
+            weather_code = weather_codes[closest_idx] if closest_idx < len(weather_codes) else 0
+            condition = WEATHER_CODES.get(weather_code, "Unknown")
+            
+            # Get precipitation - use probability if available, otherwise convert mm to estimated %
+            precip_value = None
+            if precip_probs and closest_idx < len(precip_probs) and precip_probs[closest_idx] is not None:
+                precip_value = precip_probs[closest_idx]
+            elif precip_mm and closest_idx < len(precip_mm) and precip_mm[closest_idx] is not None:
+                # Convert precipitation mm to rough probability (0mm=0%, 5mm+=100%)
+                precip_value = min(100, int(precip_mm[closest_idx] * 20))
+            
+            # Successfully got weather data
+            return {
+                "condition": condition,
+                "temp_c": round(temps[closest_idx], 1) if closest_idx < len(temps) and temps[closest_idx] is not None else None,
+                "precip_prob": precip_value,
+                "wind_kph": round(wind_speeds[closest_idx], 1) if closest_idx < len(wind_speeds) and wind_speeds[closest_idx] is not None else None,
+                "weather_code": weather_code
+            }
+            
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                logger.warning(f"⚠️ Timeout for {airport_code} on {date_str}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"❌ Max retries reached for {airport_code} on {date_str} - Timeout")
+                return None
+                
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:  # Rate limit
+                if attempt < max_retries - 1:
+                    wait_time = 5 * (attempt + 1)  # Longer wait for rate limits: 5s, 10s, 15s
+                    logger.warning(f"⚠️ Rate limited for {airport_code}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"❌ Max retries reached for {airport_code} - Rate limited")
+                    return None
+            else:
+                logger.error(f"❌ HTTP error {e.response.status_code} for {airport_code} on {date_str}: {e}")
+                return None
+                
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                logger.warning(f"⚠️ Error for {airport_code} on {date_str}: {e}, retry {attempt+1}/{max_retries} in {wait_time}s")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"❌ Max retries reached for {airport_code} on {date_str}: {e}")
+                return None
+    
+    return None
 
 
 def infer_delay_reason(origin_weather, dest_weather, status, delay_minutes):
@@ -240,13 +288,14 @@ def infer_delay_reason(origin_weather, dest_weather, status, delay_minutes):
     return None
 
 
-def backfill_weather_data(limit=None, days_back=30):
+def backfill_weather_data(limit=None, days_back=30, retry_failed=False):
     """
     Main function to backfill weather data for existing flights.
     
     Args:
         limit: Max number of flights to process (None = all)
         days_back: Only process flights from last N days
+        retry_failed: If True, only retry previously failed flights (origin_weather IS NULL)
     """
     print("\n" + "=" * 60)
     print("🌤️ WEATHER DATA BACKFILL")
@@ -265,6 +314,9 @@ def backfill_weather_data(limit=None, days_back=30):
     
     # Get flights without weather data
     cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+    
+    if retry_failed:
+        print(f"🔄 Retry mode: Processing only flights with NULL weather data")
     
     query = """
         SELECT id, flight_date, origin, destination, scheduled_departure, scheduled_arrival, status, departure_delay
@@ -289,6 +341,7 @@ def backfill_weather_data(limit=None, days_back=30):
     processed = 0
     weather_found = 0
     reasons_inferred = 0
+    failed_flights = []  # Track failures
     
     for flight in flights:
         flight_id, date, origin, dest, dep_time, arr_time, status, delay = flight
@@ -298,6 +351,35 @@ def backfill_weather_data(limit=None, days_back=30):
         
         # Get destination weather
         dest_weather = get_historical_weather(dest, date, arr_time or dep_time)
+        
+        # Track failures with detailed info
+        if not origin_weather and not dest_weather:
+            failed_flights.append({
+                'flight_id': flight_id,
+                'date': date,
+                'route': f"{origin}->{dest}",
+                'origin_failed': not origin_weather,
+                'dest_failed': not dest_weather,
+                'reason': 'Both endpoints failed'
+            })
+        elif not origin_weather:
+            failed_flights.append({
+                'flight_id': flight_id,
+                'date': date,
+                'route': f"{origin}->{dest}",
+                'origin_failed': True,
+                'dest_failed': False,
+                'reason': f'Origin ({origin}) failed'
+            })
+        elif not dest_weather:
+            failed_flights.append({
+                'flight_id': flight_id,
+                'date': date,
+                'route': f"{origin}->{dest}",
+                'origin_failed': False,
+                'dest_failed': True,
+                'reason': f'Destination ({dest}) failed'
+            })
         
         # Infer delay reason
         reason = infer_delay_reason(origin_weather, dest_weather, status, delay)
@@ -340,8 +422,8 @@ def backfill_weather_data(limit=None, days_back=30):
         if processed % 10 == 0:
             print(f"   Processed {processed}/{len(flights)}...", end='\r')
         
-        # Rate limiting for API
-        time.sleep(0.2)  # 5 requests per second max
+        # Rate limiting for API - increased to avoid 429 errors
+        time.sleep(0.5)  # 2 requests per second max (was 0.2s)
         
         # Commit every 50 records
         if processed % 50 == 0:
@@ -350,11 +432,25 @@ def backfill_weather_data(limit=None, days_back=30):
     conn.commit()
     conn.close()
     
+    # Save failure log
+    if failed_flights:
+        log_file = os.path.join(PROJECT_ROOT, 'scripts', 'weather_failures.log')
+        with open(log_file, 'w') as f:
+            f.write("# Weather API Failures Log\n")
+            f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write("flight_id,date,route,origin_failed,dest_failed,reason\n")
+            for fail in failed_flights:
+                f.write(f"{fail['flight_id']},{fail['date']},{fail['route']},{fail['origin_failed']},{fail['dest_failed']},{fail['reason']}\n")
+        print(f"\n⚠️ Failed flights logged to: {log_file}")
+    
     print(f"\n\n{'=' * 60}")
     print("✅ WEATHER BACKFILL COMPLETE!")
     print(f"📊 Processed: {processed} flights")
     print(f"🌤️ Weather data added: {weather_found} flights")
     print(f"🔍 Delay reasons inferred: {reasons_inferred} flights")
+    print(f"❌ Failed API calls: {len(failed_flights)} flights")
+    if failed_flights:
+        print(f"   (Check weather_failures.log for details)")
     print("=" * 60)
 
 
@@ -401,9 +497,30 @@ def show_weather_stats():
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Backfill weather data for flights")
+    parser = argparse.ArgumentParser(
+        description="Backfill weather data for flights",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Process all flights without weather from last 30 days
+  python backfill_weather.py
+  
+  # Process only 100 flights
+  python backfill_weather.py --limit 100
+  
+  # Process flights from last 60 days
+  python backfill_weather.py --days 60
+  
+  # Retry only previously failed flights
+  python backfill_weather.py --retry
+  
+  # Show statistics only
+  python backfill_weather.py --stats
+        """
+    )
     parser.add_argument('--limit', type=int, help='Max flights to process')
     parser.add_argument('--days', type=int, default=30, help='Days back to process (default: 30)')
+    parser.add_argument('--retry', action='store_true', help='Retry only flights with NULL weather data')
     parser.add_argument('--stats', action='store_true', help='Show weather statistics only')
     
     args = parser.parse_args()
@@ -411,6 +528,7 @@ if __name__ == "__main__":
     if args.stats:
         show_weather_stats()
     else:
-        backfill_weather_data(limit=args.limit, days_back=args.days)
+        backfill_weather_data(limit=args.limit, days_back=args.days, retry_failed=args.retry)
         print()
         show_weather_stats()
+

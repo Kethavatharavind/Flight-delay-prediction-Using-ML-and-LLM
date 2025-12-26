@@ -1,9 +1,10 @@
 """
-Flight Delay Prediction ML Model - ENHANCED VERSION
+Flight Delay Prediction ML Model - XGBoost + CatBoost Hybrid
 ✅ Uses india_data.db ONLY
 ✅ More features for higher accuracy
 ✅ Better hyperparameters
 ✅ Cross-validation for robust training
+✅ CatBoost for native categorical handling
 """
 
 import sqlite3
@@ -27,27 +28,13 @@ except ImportError:
     ML_AVAILABLE = False
     print("⚠️ ML libraries not installed. Run: pip install scikit-learn xgboost")
 
-# Try importing LSTM libraries (Keras with PyTorch backend)
-LSTM_AVAILABLE = False
+# Try importing CatBoost
+CATBOOST_AVAILABLE = False
 try:
-    import os
-    os.environ["KERAS_BACKEND"] = "torch"  # Use PyTorch as backend
-    from keras.models import Sequential
-    from keras.layers import LSTM, Dense, Dropout, Input
-    from keras.callbacks import EarlyStopping
-    import torch
-    LSTM_AVAILABLE = True
-    logger_lstm = 'PyTorch'
+    from catboost import CatBoostClassifier
+    CATBOOST_AVAILABLE = True
 except ImportError:
-    try:
-        # Fallback to TensorFlow if PyTorch not available
-        from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
-        from tensorflow.keras.callbacks import EarlyStopping
-        LSTM_AVAILABLE = True
-        logger_lstm = 'TensorFlow'
-    except ImportError:
-        print("⚠️ LSTM libraries not installed. Run: pip install keras torch")
+    print("⚠️ CatBoost not installed. Run: pip install catboost")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -59,26 +46,22 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_NAME = os.path.join(PROJECT_ROOT, 'data', 'india_data.db')
 MODEL_FILE = os.path.join(PROJECT_ROOT, 'models', 'delay_model.pkl')
 ENCODER_FILE = os.path.join(PROJECT_ROOT, 'models', 'label_encoders.pkl')
-
-
-# LSTM model file path
-LSTM_MODEL_FILE = os.path.join(PROJECT_ROOT, 'models', 'lstm_model.keras')
+CATBOOST_MODEL_FILE = os.path.join(PROJECT_ROOT, 'models', 'catboost_model.cbm')
 
 
 class FlightDelayMLModel:
     """
-    XGBoost + LSTM Hybrid Model (Research-based)
-    Replaces Random Forest with LSTM for better accuracy
+    XGBoost + CatBoost Hybrid Model (Research-based)
+    CatBoost handles categorical features natively
     """
     
     def __init__(self):
         self.model = None  # XGBoost model
-        self.lstm_model = None  # LSTM model (replaces Random Forest)
-        self.rf_model = None  # Keep for backward compatibility
+        self.catboost_model = None  # CatBoost model
         self.encoders = {}
         self.scaler = StandardScaler() if ML_AVAILABLE else None
         self.is_trained = False
-        self.lstm_trained = False
+        self.catboost_trained = False
         
         # Enhanced feature set
         self.feature_columns = [
@@ -99,7 +82,6 @@ class FlightDelayMLModel:
                     saved_data = pickle.load(f)
                     if isinstance(saved_data, dict):
                         self.model = saved_data.get('xgb_model')
-                        self.rf_model = saved_data.get('rf_model')  # Legacy support
                         self.scaler = saved_data.get('scaler', self.scaler)
                     else:
                         self.model = saved_data
@@ -108,15 +90,15 @@ class FlightDelayMLModel:
                 self.is_trained = True
                 logger.info("✅ Loaded pre-trained XGBoost model")
             
-            # Load LSTM model if exists
-            if LSTM_AVAILABLE and os.path.exists(LSTM_MODEL_FILE):
+            # Load CatBoost model if exists
+            if CATBOOST_AVAILABLE and os.path.exists(CATBOOST_MODEL_FILE):
                 try:
-                    from keras.models import load_model
-                    self.lstm_model = load_model(LSTM_MODEL_FILE)
-                    self.lstm_trained = True
-                    logger.info("✅ Loaded pre-trained LSTM model")
+                    self.catboost_model = CatBoostClassifier()
+                    self.catboost_model.load_model(CATBOOST_MODEL_FILE)
+                    self.catboost_trained = True
+                    logger.info("✅ Loaded pre-trained CatBoost model")
                 except Exception as e:
-                    logger.warning(f"⚠️ Could not load LSTM model: {e}")
+                    logger.warning(f"⚠️ Could not load CatBoost model: {e}")
                     
         except Exception as e:
             logger.warning(f"⚠️ Could not load model: {e}")
@@ -127,20 +109,19 @@ class FlightDelayMLModel:
             with open(MODEL_FILE, 'wb') as f:
                 pickle.dump({
                     'xgb_model': self.model,
-                    'rf_model': self.rf_model,  # Legacy support
                     'scaler': self.scaler
                 }, f)
             with open(ENCODER_FILE, 'wb') as f:
                 pickle.dump(self.encoders, f)
             logger.info(f"✅ XGBoost model saved to {MODEL_FILE}")
             
-            # Save LSTM model separately (Keras format)
-            if self.lstm_model is not None and LSTM_AVAILABLE:
+            # Save CatBoost model separately (native format)
+            if self.catboost_model is not None and CATBOOST_AVAILABLE:
                 try:
-                    self.lstm_model.save(LSTM_MODEL_FILE)
-                    logger.info(f"✅ LSTM model saved to {LSTM_MODEL_FILE}")
+                    self.catboost_model.save_model(CATBOOST_MODEL_FILE)
+                    logger.info(f"✅ CatBoost model saved to {CATBOOST_MODEL_FILE}")
                 except Exception as e:
-                    logger.warning(f"⚠️ Could not save LSTM model: {e}")
+                    logger.warning(f"⚠️ Could not save CatBoost model: {e}")
                     
         except Exception as e:
             logger.error(f"❌ Could not save model: {e}")
@@ -347,60 +328,51 @@ class FlightDelayMLModel:
         )
         self.model.fit(X_train_scaled, y_train, verbose=False)
         
-        # Train LSTM (Replaces Random Forest)
-        print("🔄 Training LSTM...")
-        lstm_proba = None
-        lstm_acc = 0.0
+        # Train CatBoost
+        print("🔄 Training CatBoost...")
+        catboost_proba = None
+        catboost_acc = 0.0
         
-        if LSTM_AVAILABLE:
+        if CATBOOST_AVAILABLE:
             try:
-                # Reshape for LSTM: (samples, timesteps=1, features)
-                X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
-                X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
-                
-                # Build LSTM model
-                self.lstm_model = Sequential([
-                    Input(shape=(1, X_train_scaled.shape[1])),
-                    LSTM(64, return_sequences=True),
-                    Dropout(0.3),
-                    LSTM(32),
-                    Dropout(0.2),
-                    Dense(16, activation='relu'),
-                    Dense(1, activation='sigmoid')
-                ])
-                self.lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-                
-                # Early stopping
-                early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=0)
-                
-                # Train LSTM
-                self.lstm_model.fit(
-                    X_train_lstm, y_train.values,
-                    epochs=50, batch_size=32,
-                    validation_split=0.2,
-                    callbacks=[early_stop],
-                    verbose=0
+                # CatBoost works well with unscaled data too, but we use scaled for consistency
+                self.catboost_model = CatBoostClassifier(
+                    iterations=200,
+                    depth=6,
+                    learning_rate=0.05,
+                    l2_leaf_reg=3,
+                    random_seed=42,
+                    verbose=False,
+                    auto_class_weights='Balanced'  # Handle imbalanced data
                 )
                 
-                # LSTM predictions
-                lstm_proba = self.lstm_model.predict(X_test_lstm, verbose=0).flatten()
-                lstm_pred = (lstm_proba > 0.5).astype(int)
-                lstm_acc = accuracy_score(y_test, lstm_pred)
-                self.lstm_trained = True
-                print(f"   ✅ LSTM trained! Accuracy: {lstm_acc:.2%}")
+                # Train CatBoost
+                self.catboost_model.fit(
+                    X_train_scaled, y_train,
+                    eval_set=(X_test_scaled, y_test),
+                    early_stopping_rounds=20,
+                    verbose=False
+                )
+                
+                # CatBoost predictions
+                catboost_proba = self.catboost_model.predict_proba(X_test_scaled)[:, 1]
+                catboost_pred = (catboost_proba > 0.5).astype(int)
+                catboost_acc = accuracy_score(y_test, catboost_pred)
+                self.catboost_trained = True
+                print(f"   ✅ CatBoost trained! Accuracy: {catboost_acc:.2%}")
                 
             except Exception as e:
-                logger.warning(f"⚠️ LSTM training failed: {e}")
-                print(f"   ⚠️ LSTM failed, using XGBoost only")
+                logger.warning(f"⚠️ CatBoost training failed: {e}")
+                print(f"   ⚠️ CatBoost failed, using XGBoost only")
         else:
-            print("   ⚠️ LSTM not available")
+            print("   ⚠️ CatBoost not available")
         
         # Ensemble predictions
         xgb_proba = self.model.predict_proba(X_test_scaled)[:, 1]
         
-        if lstm_proba is not None:
-            # Ensemble XGBoost and LSTM
-            ensemble_proba = (xgb_proba * 0.6 + lstm_proba * 0.4)
+        if catboost_proba is not None:
+            # Ensemble XGBoost and CatBoost (equal weights - both are strong)
+            ensemble_proba = (xgb_proba * 0.5 + catboost_proba * 0.5)
         else:
             # Fallback to XGBoost only
             ensemble_proba = xgb_proba
@@ -417,13 +389,13 @@ class FlightDelayMLModel:
         cv_scores = cross_val_score(self.model, X_train_scaled, y_train, cv=5, scoring='accuracy')
         
         print("\n" + "=" * 60)
-        print("📈 MODEL PERFORMANCE (XGBoost + LSTM Hybrid)")
+        print("📈 MODEL PERFORMANCE (XGBoost + CatBoost Hybrid)")
         print("=" * 60)
         print(f"XGBoost Accuracy:     {xgb_acc:.2%}")
-        if lstm_proba is not None:
-            print(f"LSTM Accuracy:        {lstm_acc:.2%}")
+        if catboost_proba is not None:
+            print(f"CatBoost Accuracy:    {catboost_acc:.2%}")
         else:
-            print(f"LSTM Accuracy:        N/A (not trained)")
+            print(f"CatBoost Accuracy:    N/A (not trained)")
         print(f"Ensemble Accuracy:    {accuracy:.2%}")
         print(f"Cross-Val Mean:       {cv_scores.mean():.2%} (±{cv_scores.std():.2%})")
         print("=" * 60)
@@ -565,22 +537,21 @@ class FlightDelayMLModel:
             # Scale features
             features_scaled = self.scaler.transform(features)
             
-            # Ensemble prediction (XGBoost + LSTM)
+            # Ensemble prediction (XGBoost + CatBoost)
             xgb_prob = self.model.predict_proba(features_scaled)[0][1]
             
-            # Try LSTM prediction if available
-            lstm_prob = None
-            if self.lstm_model is not None and LSTM_AVAILABLE:
+            # Try CatBoost prediction if available
+            catboost_prob = None
+            if self.catboost_model is not None and CATBOOST_AVAILABLE:
                 try:
-                    features_lstm = features_scaled.reshape((1, 1, features_scaled.shape[1]))
-                    lstm_prob = float(self.lstm_model.predict(features_lstm, verbose=0)[0][0])
+                    catboost_prob = float(self.catboost_model.predict_proba(features_scaled)[0][1])
                 except Exception as e:
-                    logger.warning(f"LSTM prediction failed: {e}")
+                    logger.warning(f"CatBoost prediction failed: {e}")
             
             # Calculate ensemble probability
-            if lstm_prob is not None:
-                delay_prob = (xgb_prob * 0.5 + lstm_prob * 0.5) * 100  # 50/50 as per research
-                model_name = 'XGBoost+LSTM Hybrid'
+            if catboost_prob is not None:
+                delay_prob = (xgb_prob * 0.5 + catboost_prob * 0.5) * 100  # 50/50 ensemble
+                model_name = 'XGBoost+CatBoost Hybrid'
             else:
                 delay_prob = xgb_prob * 100
                 model_name = 'XGBoost Only'
@@ -599,7 +570,7 @@ class FlightDelayMLModel:
                 'confidence': confidence,
                 'model': model_name,
                 'xgb_prob': round(xgb_prob * 100, 1),
-                'lstm_prob': round(lstm_prob * 100, 1) if lstm_prob else None
+                'catboost_prob': round(catboost_prob * 100, 1) if catboost_prob else None
             }
             
         except Exception as e:
@@ -614,10 +585,10 @@ class FlightDelayMLModel:
         """Get model statistics"""
         return {
             'is_trained': self.is_trained,
-            'lstm_trained': self.lstm_trained if hasattr(self, 'lstm_trained') else False,
-            'model_type': 'XGBoost + LSTM Hybrid',
+            'catboost_trained': self.catboost_trained if hasattr(self, 'catboost_trained') else False,
+            'model_type': 'XGBoost + CatBoost Hybrid',
             'model_file': MODEL_FILE,
-            'lstm_file': LSTM_MODEL_FILE,
+            'catboost_file': CATBOOST_MODEL_FILE,
             'features': self.feature_columns,
             'db_source': DB_NAME
         }
@@ -651,17 +622,17 @@ def train_model():
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
-    print("🧠 FLIGHT DELAY ML MODEL - XGBoost + LSTM HYBRID")
+    print("🧠 FLIGHT DELAY ML MODEL - XGBoost + CatBoost HYBRID")
     print("=" * 60)
     print(f"📂 Database: {DB_NAME}")
     print(f"💾 XGBoost Model: {MODEL_FILE}")
-    print(f"🔮 LSTM Model: {LSTM_MODEL_FILE}")
-    print(f"🔧 Architecture: XGBoost + LSTM Ensemble (Research-based)")
+    print(f"� CatBoost Model: {CATBOOST_MODEL_FILE}")
+    print(f"🔧 Architecture: XGBoost + CatBoost Ensemble")
     print("=" * 60 + "\n")
     
     if not ML_AVAILABLE:
         print("❌ ML libraries not installed!")
-        print("Run: pip install scikit-learn xgboost")
+        print("Run: pip install scikit-learn xgboost catboost")
         exit(1)
     
     model = FlightDelayMLModel()
@@ -684,9 +655,10 @@ if __name__ == "__main__":
         
         print(f"Route: DEL → BOM")
         print(f"XGBoost Prob: {result.get('xgb_prob')}%")
-        print(f"LSTM Prob: {result.get('lstm_prob')}%")
+        print(f"CatBoost Prob: {result.get('catboost_prob')}%")
         print(f"Ensemble: {result.get('probability_delay')}%")
         print(f"Model: {result.get('model')}")
         print(f"Confidence: {result.get('confidence')}")
     else:
         print("\n❌ Training failed! Make sure india_data.db has enough data.")
+

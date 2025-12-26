@@ -1,6 +1,6 @@
-"""
+"""r
 Model Comparison & Benchmarking Tool
-✅ Compare XGBoost performance
+✅ Compare XGBoost + CatBoost performance
 ✅ Benchmark Q-Learning agent
 ✅ Generate performance reports
 """
@@ -21,14 +21,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src
 import ml_model
 import rl_agent
 
-# Import advanced models (optional)
-try:
-    from ml_model_advanced import get_bilstm_model
-    BILSTM_AVAILABLE = True
-except:
-    BILSTM_AVAILABLE = False
-    print("⚠️ BiLSTM not available (optional)")
-
 
 class ModelComparator:
     """
@@ -36,18 +28,15 @@ class ModelComparator:
     """
     
     def __init__(self):
-        # Load existing models
-        self.xgboost_model = ml_model.get_ml_model()
+        # Load existing models (XGBoost + CatBoost hybrid)
+        self.hybrid_model = ml_model.get_ml_model()
         self.qlearning_agent = rl_agent.FlightPredictionRLAgent()
-        
-        # Load advanced models if available (optional)
-        self.bilstm_model = get_bilstm_model() if BILSTM_AVAILABLE else None
         
         self.results = []
     
     def benchmark_ml_models(self, test_flights):
         """
-        Compare ML models on test flights
+        Benchmark ML model on test flights
         
         Args:
             test_flights: List of dicts with keys:
@@ -56,89 +45,58 @@ class ModelComparator:
                 - actual_delayed (ground truth)
         """
         print("\n" + "=" * 60)
-        print("🧪 ML MODEL COMPARISON")
+        print("🧪 ML MODEL BENCHMARK (XGBoost + CatBoost Hybrid)")
         print("=" * 60)
         
-        xgboost_results = []
-        bilstm_results = []
+        model_results = []
         
         for i, flight in enumerate(test_flights, 1):
             print(f"\n[{i}/{len(test_flights)}] Testing: {flight['origin']} → {flight['destination']}")
             
-            # XGBoost prediction
+            # Hybrid model prediction
             start = time.time()
-            xgb_result = self.xgboost_model.predict_delay_probability(
+            result = self.hybrid_model.predict_delay_probability(
                 origin=flight['origin'],
                 destination=flight['destination'],
                 airline_code=flight.get('airline_code', '6E'),
                 departure_time=flight.get('departure_time', '12:00'),
                 flight_date=flight['flight_date']
             )
-            xgb_time = time.time() - start
+            inference_time = time.time() - start
             
-            xgb_prob = xgb_result.get('probability_delay', 0)
-            xgb_correct = (xgb_prob > 50) == flight['actual_delayed']
+            prob = result.get('probability_delay', 0)
+            correct = (prob > 50) == flight['actual_delayed']
+            model_name = result.get('model', 'Unknown')
+            xgb_prob = result.get('xgb_prob')
+            catboost_prob = result.get('catboost_prob')
             
-            xgboost_results.append({
-                'probability': xgb_prob,
-                'correct': xgb_correct,
-                'inference_time': xgb_time
+            model_results.append({
+                'probability': prob,
+                'correct': correct,
+                'inference_time': inference_time,
+                'model': model_name
             })
             
-            print(f"  XGBoost: {xgb_prob:.1f}% | {'✅' if xgb_correct else '❌'} | {xgb_time*1000:.1f}ms")
-            
-            # BiLSTM prediction
-            if self.bilstm_model:
-                start = time.time()
-                bilstm_result = self.bilstm_model.predict_delay_probability(
-                    origin=flight['origin'],
-                    destination=flight['destination'],
-                    airline_code=flight.get('airline_code', '6E'),
-                    departure_time=flight.get('departure_time', '12:00'),
-                    flight_date=flight['flight_date']
-                )
-                bilstm_time = time.time() - start
-                
-                bilstm_prob = bilstm_result.get('probability_delay', 0)
-                bilstm_correct = (bilstm_prob > 50) == flight['actual_delayed']
-                
-                bilstm_results.append({
-                    'probability': bilstm_prob,
-                    'correct': bilstm_correct,
-                    'inference_time': bilstm_time
-                })
-                
-                print(f"  BiLSTM:  {bilstm_prob:.1f}% | {'✅' if bilstm_correct else '❌'} | {bilstm_time*1000:.1f}ms")
+            print(f"  Model: {model_name}")
+            print(f"  XGBoost: {xgb_prob}% | CatBoost: {catboost_prob}%")
+            print(f"  Ensemble: {prob:.1f}% | {'✅' if correct else '❌'} | {inference_time*1000:.1f}ms")
         
         # Calculate statistics
         print("\n" + "=" * 60)
         print("📊 ML MODEL RESULTS")
         print("=" * 60)
         
-        xgb_accuracy = np.mean([r['correct'] for r in xgboost_results]) * 100
-        xgb_avg_time = np.mean([r['inference_time'] for r in xgboost_results]) * 1000
+        accuracy = np.mean([r['correct'] for r in model_results]) * 100
+        avg_time = np.mean([r['inference_time'] for r in model_results]) * 1000
         
-        print(f"\n🔷 XGBoost + Random Forest:")
-        print(f"   Accuracy:        {xgb_accuracy:.2f}%")
-        print(f"   Avg Inference:   {xgb_avg_time:.2f}ms")
-        
-        if bilstm_results:
-            bilstm_accuracy = np.mean([r['correct'] for r in bilstm_results]) * 100
-            bilstm_avg_time = np.mean([r['inference_time'] for r in bilstm_results]) * 1000
-            
-            print(f"\n🔶 BiLSTM + Attention:")
-            print(f"   Accuracy:        {bilstm_accuracy:.2f}%")
-            print(f"   Avg Inference:   {bilstm_avg_time:.2f}ms")
-            
-            print(f"\n📈 Improvement:")
-            print(f"   Accuracy Gain:   {bilstm_accuracy - xgb_accuracy:+.2f}%")
-            print(f"   Speed Change:    {bilstm_avg_time - xgb_avg_time:+.2f}ms")
-        
+        print(f"\n🔷 XGBoost + CatBoost Hybrid:")
+        print(f"   Accuracy:        {accuracy:.2f}%")
+        print(f"   Avg Inference:   {avg_time:.2f}ms")
+        print(f"   Model Stats:     {self.hybrid_model.get_stats()}")
         print("=" * 60)
         
         return {
-            'xgboost': xgboost_results,
-            'bilstm': bilstm_results if bilstm_results else None
+            'hybrid': model_results
         }
     
     def benchmark_rl_agents(self, test_scenarios):
@@ -249,17 +207,15 @@ class ModelComparator:
             'timestamp': datetime.now().isoformat(),
             'models_compared': {
                 'ml': {
-                    'xgboost': True,
-                    'bilstm': BILSTM_AVAILABLE
+                    'xgboost_catboost_hybrid': True
                 },
                 'rl': {
                     'qlearning': True
                 }
             },
             'summary': {
-                'xgboost': ml_model.get_ml_model().get_stats() if hasattr(ml_model.get_ml_model(), 'get_stats') else {},
-                'qlearning': {'states': len(self.qlearning_agent.q_table)},
-                'bilstm': self.bilstm_model.get_stats() if self.bilstm_model else None
+                'hybrid_model': ml_model.get_ml_model().get_stats() if hasattr(ml_model.get_ml_model(), 'get_stats') else {},
+                'qlearning': {'states': len(self.qlearning_agent.q_table)}
             }
         }
         
@@ -329,8 +285,7 @@ if __name__ == "__main__":
     print("🔬 FLIGHT AI MODEL COMPARISON TOOL")
     print("=" * 60)
     print(f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"🔷 XGBoost + RF:  {'✅' if ml_model.get_ml_model().is_trained else '❌'}")
-    print(f"🔶 BiLSTM:        {'✅' if BILSTM_AVAILABLE else '❌'}")
+    print(f"🔷 XGBoost + CatBoost Hybrid: {'✅' if ml_model.get_ml_model().is_trained else '❌'}")
     print(f"🔷 Q-Learning:    ✅")
     print("=" * 60)
     

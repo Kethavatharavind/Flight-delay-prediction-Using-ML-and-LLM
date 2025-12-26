@@ -431,7 +431,7 @@ if __name__ == '__main__':
     print(f"🏥 Health Check: http://127.0.0.1:5000/health")
     print(f"📊 RL Stats: http://127.0.0.1:5000/rl_stats")
     print("\n🧠 Prediction System:")
-    print("   ✅ ML Model (XGBoost + Random Forest) - 75%")
+    print("   ✅ ML Model (XGBoost + CatBoost Hybrid)")
     print("   ✅ Weather Risk (Open-Meteo) - 25%")
     print("   ✅ RL Agent (Q-Learning) - Adjusts predictions")
     print("\n📡 Data Sources:")

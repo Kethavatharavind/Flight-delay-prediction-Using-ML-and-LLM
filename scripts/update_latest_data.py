@@ -36,7 +36,6 @@ ROUTES_FILE = os.path.join(PROJECT_ROOT, 'config', 'major_routes.json')
 ARCHIVE_DIR = os.path.join(PROJECT_ROOT, 'data')
 ROUTES_TO_TRACK = 20
 API_SLEEP = 15.0
-MAX_WEATHER_FETCHES = 50  # Limit weather fetches to prevent hanging
 WEATHER_TIMEOUT = 10  # Timeout for each weather API call
 # ---------------------
 
@@ -96,7 +95,7 @@ def init_db(conn):
     conn.commit()
 
 
-def archive_old_data(conn, days_to_keep=180):
+def archive_old_data(conn, days_to_keep=365):
     """
     Archive old data to CSV before deleting from database.
     Keeps last 180 days in database, exports older to CSV.
@@ -304,7 +303,7 @@ def run_update():
     
     # ===== FETCH WEATHER FOR NEW FLIGHTS =====
     if WEATHER_AVAILABLE and total_added > 0:
-        print(f"\n🌤️ Fetching weather for up to {MAX_WEATHER_FETCHES} new flights...")
+        print(f"\n🌤️ Fetching weather for ALL new flights...")
         weather_added = 0
         weather_failed = 0
         
@@ -312,8 +311,7 @@ def run_update():
             SELECT id, flight_date, origin, destination, scheduled_departure, scheduled_arrival, status, departure_delay
             FROM flights 
             WHERE flight_date = ? AND origin_weather IS NULL
-            LIMIT ?
-        """, (yesterday, MAX_WEATHER_FETCHES))
+        """, (yesterday,))
         
         new_flights = cursor.fetchall()
         total_weather_attempts = len(new_flights)
@@ -363,11 +361,11 @@ def run_update():
                     ))
                     
                     weather_added += 1
-                    if idx % 10 == 0:  # Progress update every 10 flights
+                    if idx % 2 == 0:  # Progress update every 10 flights
                         print(f"    📊 Progress: {idx}/{total_weather_attempts} ({weather_added} successful)")
                 
                 # Rate limiting - but shorter delay to speed up
-                time.sleep(0.1)
+                time.sleep(0.3)
                 
             except KeyboardInterrupt:
                 print(f"\n⚠️ Weather fetching interrupted by user at {idx}/{total_weather_attempts}")
@@ -383,7 +381,7 @@ def run_update():
         print(f"\n🌤️ No new flights to fetch weather for")
 
     
-    archive_old_data(conn, days_to_keep=180)  # Keep 6 months instead of 1 year
+    archive_old_data(conn, days_to_keep=365)  # Keep 6 months instead of 1 year
     
     conn.close()
 
